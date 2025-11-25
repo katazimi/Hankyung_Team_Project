@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>주식 차트</title>
+    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        body {
+            font-family: 'Pretendard', 'Noto Sans KR', sans-serif;
+            background-color: #f4f6f8;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            padding: 25px;
+            box-sizing: border-box;
+        }
+        
+        /* 상단 컨트롤 영역 (검색 + 주기 버튼) */
+        .control-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .search-wrapper { position: relative; flex: 1; max-width: 400px; }
+        #searchInput { width: 100%; padding: 12px 15px; font-size: 16px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
+        #searchResult { position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #ddd; border-radius: 0 0 8px 8px; max-height: 250px; overflow-y: auto; list-style: none; padding: 0; margin: 0; z-index: 1000; display: none; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        #searchResult li { padding: 12px 15px; cursor: pointer; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+        #searchResult li:hover { background-color: #f8f9fa; color: #2962FF; }
+
+        /* ⭐️ 주기 선택 버튼 스타일 */
+        .period-selector { display: flex; gap: 5px; }
+        .period-btn {
+            padding: 10px 20px;
+            border: 1px solid #ddd;
+            background-color: white;
+            color: #555;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .period-btn:hover { background-color: #f1f3f5; }
+        .period-btn.active {
+            background-color: #2962FF;
+            color: white;
+            border-color: #2962FF;
+        }
+
+        /* 정보 표시줄 */
+        #chartLegend {
+            width: 100%; min-height: 54px; margin-bottom: 15px; padding: 12px 20px;
+            background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px;
+            box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; gap: 20px;
+            font-size: 14px; color: #495057;
+        }
+        .stock-title { font-size: 22px; font-weight: 800; margin-right: 10px; color: #212529; }
+        .legend-item { display: flex; align-items: center; }
+        .legend-label { margin-right: 6px; color: #868e96; font-size: 13px; }
+        .legend-value { font-weight: 600; font-size: 15px; }
+        .up { color: #e11d48; } .down { color: #2563eb; }
+
+        /* 차트 */
+        #tv_chart { width: 100%; height: 550px; border-radius: 4px; overflow: hidden; }
+
+        /* 분석 영역 */
+        #analysisSection { margin-top: 20px; border-top: 1px solid #eee; padding-top: 20px; display: none; }
+        .analysis-header { font-size: 18px; font-weight: 700; color: #333; margin-bottom: 15px; display: flex; align-items: center; }
+        .analysis-header::before { content: ''; display: inline-block; width: 4px; height: 18px; background: #2962FF; margin-right: 10px; border-radius: 2px; }
+        
+        .pattern-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; }
+        .pattern-card { background: white; border: 1px solid #e0e0e0; border-radius: 8px; padding: 15px; transition: transform 0.2s; }
+        .pattern-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-color: #2962FF; }
+        .pattern-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .pattern-name { font-size: 16px; font-weight: bold; color: #333; }
+        .trend-badge { font-size: 12px; padding: 4px 8px; border-radius: 4px; font-weight: 600; }
+        .trend-up { background-color: #ffebee; color: #c62828; }
+        .trend-down { background-color: #e3f2fd; color: #1565c0; }
+        .trend-neutral { background-color: #f5f5f5; color: #616161; }
+        .pattern-desc { font-size: 13px; color: #666; line-height: 1.5; margin-bottom: 10px; height: 40px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+        .pattern-meta { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #f0f0f0; padding-top: 10px; font-size: 12px; color: #999; }
+        .reliability-stars { color: #ffc107; letter-spacing: 1px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <!-- 컨트롤 바 -->
+        <div class="control-bar">
+            <div class="search-wrapper">
+                <input type="text" id="searchInput" placeholder="종목명 또는 코드 검색 (예: 삼성전자)" autocomplete="off">
+                <ul id="searchResult"></ul>
+            </div>
+            
+            <!-- ⭐️ 주기 선택 버튼 -->
+            <div class="period-selector">
+                <button class="period-btn active" onclick="changePeriod('D')">일봉</button>
+                <button class="period-btn" onclick="changePeriod('W')">주봉</button>
+                <button class="period-btn" onclick="changePeriod('M')">월봉</button>
+            </div>
+        </div>
+
+        <!-- 정보 표시줄 -->
+        <div id="chartLegend">
+            <span class="stock-title">삼성전자 (005930)</span>
+        </div>
+
+        <!-- 차트 -->
+        <div id="tv_chart"></div>
+
+        <!-- ⭐️ 패턴 분석 결과 영역 -->
+        <div id="analysisSection">
+            <div class="analysis-header" id="analysisHeader">📊 일봉 기준 캔들 패턴 분석</div>
+            <div id="patternList" class="pattern-list"></div>
+        </div>
+    </div>
+
+    <script>
+        const PATTERN_DEFINITIONS = {
+            "HAMMER": { name: "망치형", desc: "하락 추세 바닥에서 발생하며 상승 반전을 예고합니다.", trend: "상승", stars: 3 },
+            "INVERTED_HAMMER": { name: "역망치형", desc: "바닥권에서 매수세가 유입되려는 신호입니다.", trend: "상승", stars: 2 },
+            "BULLISH_ENGULFING": { name: "상승 장악형", desc: "전일 음봉을 오늘 양봉이 감싸는 강력한 상승 신호입니다.", trend: "상승", stars: 5 },
+            "MORNING_STAR": { name: "샛별형", desc: "하락→도지→상승으로 이어지는 확실한 반전 신호입니다.", trend: "상승", stars: 5 },
+            "THREE_WHITE_SOLDIERS": { name: "적삼병", desc: "양봉 3개가 연속 상승하며 추세 지속을 알립니다.", trend: "상승", stars: 4 },
+            "SHOOTING_STAR": { name: "유성형", desc: "고점에서 긴 위꼬리가 발생하며 하락 반전을 예고합니다.", trend: "하락", stars: 3 },
+            "HANGING_MAN": { name: "교수형", desc: "고점에서 매도세가 출현했음을 알립니다.", trend: "하락", stars: 2 },
+            "BEARISH_ENGULFING": { name: "하락 장악형", desc: "전일 양봉을 오늘 음봉이 감싸는 강력한 하락 신호입니다.", trend: "하락", stars: 5 },
+            "EVENING_STAR": { name: "석별형", desc: "상승→도지→하락으로 이어지는 확실한 하락 신호입니다.", trend: "하락", stars: 5 },
+            "THREE_BLACK_CROWS": { name: "흑삼병", desc: "음봉 3개가 연속 하락하며 추세 지속을 알립니다.", trend: "하락", stars: 4 },
+            "DOJI": { name: "도지형", desc: "시가와 종가가 일치하며 추세 전환의 전조일 수 있습니다.", trend: "중립", stars: 1 },
+            "SPINNING_TOP": { name: "팽이형", desc: "방향성이 결정되지 않은 중립 상태입니다.", trend: "중립", stars: 1 },
+            "NONE": { name: "특이 패턴 없음", desc: "현재 분석된 뚜렷한 캔들 패턴이 없습니다.", trend: "중립", stars: 0 }
+        };
+
+        // 전역 변수
+        let currentCode = "005930";
+        let currentName = "삼성전자";
+        let currentPeriod = "D"; // 기본 일봉
+        let allData = [];
+        let isLoading = false;
+        
+        // 차트 객체
+        let chart, candleSeries, ma5Series, ma20Series, ma60Series, volumeSeries;
+
+        document.addEventListener('DOMContentLoaded', function () {
+            initChart();
+            loadDataAndAnalysis(); // 초기 실행
+        });
+
+        function initChart() {
+            const chartContainer = document.getElementById('tv_chart');
+            chart = LightweightCharts.createChart(chartContainer, {
+                width: chartContainer.clientWidth, height: 550,
+                layout: { backgroundColor: '#ffffff', textColor: '#333', fontFamily: 'Pretendard, sans-serif' },
+                grid: { vertLines: { color: '#f0f3fa' }, horzLines: { color: '#f0f3fa' } },
+                crosshair: { mode: LightweightCharts.CrosshairMode.Normal, vertLine: { labelVisible: false }, horzLine: { labelVisible: false } },
+                rightPriceScale: { visible: true, borderColor: '#e0e0e0', scaleMargins: { top: 0.05, bottom: 0.30 } },
+                timeScale: { rightOffset: 12, barSpacing: 10, timeVisible: true, secondsVisible: false, borderColor: '#e0e0e0' },
+            });
+
+            candleSeries = chart.addCandlestickSeries({ upColor: '#e11d48', borderUpColor: '#e11d48', wickUpColor: '#e11d48', downColor: '#2563eb', borderDownColor: '#2563eb', wickDownColor: '#2563eb', lastValueVisible: false, priceLineVisible: false });
+            ma5Series = chart.addLineSeries({ color: '#2962FF', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
+            ma20Series = chart.addLineSeries({ color: '#B71C1C', lineWidth: 2, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
+            ma60Series = chart.addLineSeries({ color: '#00C853', lineWidth: 2, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
+            volumeSeries = chart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'vol_scale', lastValueVisible: false, priceLineVisible: false });
+            
+            chart.priceScale('vol_scale').applyOptions({ scaleMargins: { top: 0.75, bottom: 0 } });
+            chart.subscribeCrosshairMove(updateLegend);
+            
+            window.addEventListener('resize', () => chart.resize(chartContainer.clientWidth, 550));
+        }
+
+        // ⭐️ 주기 변경 함수 (버튼 클릭 시)
+        window.changePeriod = function(period) {
+            if (currentPeriod === period) return;
+            currentPeriod = period;
+            
+            // 버튼 스타일 업데이트
+            document.querySelectorAll('.period-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // 차트 및 분석 헤더 업데이트
+            const pText = period === 'D' ? '일봉' : (period === 'W' ? '주봉' : '월봉');
+            document.getElementById('analysisHeader').textContent = `📊 ${pText} 기준 캔들 패턴 분석`;
+
+            // 데이터 재로딩
+            allData = [];
+            candleSeries.setData([]); ma5Series.setData([]); ma20Series.setData([]); ma60Series.setData([]); volumeSeries.setData([]);
+            loadDataAndAnalysis();
+        };
+
+        // ⭐️ 통합 데이터 로딩 (차트 + 분석)
+        function loadDataAndAnalysis() {
+            if (isLoading) return; isLoading = true;
+            
+            // 차트 데이터 요청 (type 파라미터 추가)
+            fetch(`/api/stock/${currentCode}/candle-data?type=${currentPeriod}`)
+                .then(res => res.json())
+                .then(data => {
+                	if (!Array.isArray(data) || data.length === 0) {
+                	    // 조건 제거: if (currentPeriod === 'D')  <-- 삭제됨
+                	    if (confirm(`[${currentName}] 데이터가 없습니다.\n데이터를 수집하시겠습니까?`)) {
+                	        collectData(currentCode);
+                	    }
+                	    isLoading = false; 
+                	    return;
+                	}
+                    
+                    allData = data;
+                    updateChartSeries(allData);
+                    updateLegend({ time: null, point: { x: -1, y: -1 } });
+                    
+                    // 차트 로딩 완료 후 분석 데이터 요청 (type 파라미터 사용)
+                    loadAnalysisData(); 
+                    isLoading = false;
+                })
+                .catch(err => { console.error(err); isLoading = false; });
+        }
+
+        // ⭐️ 분석 데이터 로딩
+        function loadAnalysisData() {
+            const listDiv = document.getElementById('patternList');
+            const section = document.getElementById('analysisSection');
+            listDiv.innerHTML = ''; section.style.display = 'none';
+
+            fetch(`/api/stock/${currentCode}/analysis?type=${currentPeriod}`)
+                .then(res => res.json())
+                .then(list => {
+                    section.style.display = 'block';
+                    if (!list || list.length === 0 || (list.length === 1 && list[0].type === 'NONE')) {
+                        listDiv.innerHTML = `<div style="color:#999; padding:10px;">발견된 특이 패턴이 없습니다.</div>`;
+                        return;
+                    }
+                    list.forEach(item => {
+                        const def = PATTERN_DEFINITIONS[item.type] || PATTERN_DEFINITIONS["NONE"];
+                        let badgeClass = 'trend-neutral';
+                        let trendIcon = '-';
+                        if (def.trend === '상승') { badgeClass = 'trend-up'; trendIcon = '▲ 상승'; }
+                        else if (def.trend === '하락') { badgeClass = 'trend-down'; trendIcon = '▼ 하락'; }
+                        
+                        const stars = '★'.repeat(def.stars) + '☆'.repeat(5 - def.stars);
+                        const cardHtml = `
+                            <div class="pattern-card">
+                                <div class="pattern-top">
+                                    <span class="pattern-name">${def.name}</span>
+                                    <span class="trend-badge ${badgeClass}">${trendIcon}</span>
+                                </div>
+                                <div class="pattern-desc">${def.desc}</div>
+                                <div class="pattern-meta">
+                                    <span>발생일: ${item.date}</span>
+                                    <span class="reliability-stars">${stars}</span>
+                                </div>
+                            </div>`;
+                        listDiv.insertAdjacentHTML('beforeend', cardHtml);
+                    });
+                });
+        }
+
+        function updateChartSeries(dataList) {
+            const candles = dataList.map(d => ({ time: d.x, open: d.y[0], high: d.y[1], low: d.y[2], close: d.y[3] }));
+            const ma5 = dataList.map(d => ({ time: d.x, value: d.ma5 })).filter(d => d.value);
+            const ma20 = dataList.map(d => ({ time: d.x, value: d.ma20 })).filter(d => d.value);
+            const ma60 = dataList.map(d => ({ time: d.x, value: d.ma60 })).filter(d => d.value);
+            const volumes = dataList.map(d => ({ time: d.x, value: d.volume, color: (d.y[3] >= d.y[0]) ? 'rgba(225, 29, 72, 0.5)' : 'rgba(37, 99, 235, 0.5)' }));
+
+            candleSeries.setData(candles); ma5Series.setData(ma5); ma20Series.setData(ma20); ma60Series.setData(ma60); volumeSeries.setData(volumes);
+        }
+
+        function updateLegend(param) {
+            const valid = (param.time && param.point.x >= 0 && param.point.x <= chartContainer.clientWidth && param.point.y >= 0 && param.point.y <= chartContainer.clientHeight);
+            const data = valid ? param.seriesData.get(candleSeries) : (allData.length > 0 ? allData[allData.length - 1] : null);
+            const ma5 = valid ? param.seriesData.get(ma5Series) : (allData.length > 0 ? allData[allData.length - 1]?.ma5 : null);
+            const ma20 = valid ? param.seriesData.get(ma20Series) : (allData.length > 0 ? allData[allData.length - 1]?.ma20 : null);
+            const ma60 = valid ? param.seriesData.get(ma60Series) : (allData.length > 0 ? allData[allData.length - 1]?.ma60 : null);
+
+            const container = document.getElementById('chartLegend');
+            let html = `<span class="stock-title">${currentName} (${currentCode})</span>`;
+
+            if (data) {
+                const open = (data.open || data.y?.[0] || 0);
+                const high = (data.high || data.y?.[1] || 0);
+                const low = (data.low || data.y?.[2] || 0);
+                const close = (data.close || data.y?.[3] || 0);
+                const colorClass = (close >= open) ? 'up' : 'down';
+
+                html += `<div class="legend-item"><span class="legend-label">시</span><span class="legend-value ${colorClass}">${Number(open).toLocaleString()}</span></div>
+                         <div class="legend-item"><span class="legend-label">고</span><span class="legend-value ${colorClass}">${Number(high).toLocaleString()}</span></div>
+                         <div class="legend-item"><span class="legend-label">저</span><span class="legend-value ${colorClass}">${Number(low).toLocaleString()}</span></div>
+                         <div class="legend-item"><span class="legend-label">종</span><span class="legend-value ${colorClass}">${Number(close).toLocaleString()}</span></div>`;
+            }
+            
+            const getVal = (obj) => (obj && typeof obj === 'object' && 'value' in obj) ? obj.value : obj;
+            if (getVal(ma5)) html += `<div class="legend-item" style="color: #2962FF;"><span class="legend-label">MA5</span><span class="legend-value">${Math.round(getVal(ma5)).toLocaleString()}</span></div>`;
+            if (getVal(ma20)) html += `<div class="legend-item" style="color: #B71C1C;"><span class="legend-label">MA20</span><span class="legend-value">${Math.round(getVal(ma20)).toLocaleString()}</span></div>`;
+            if (getVal(ma60)) html += `<div class="legend-item" style="color: #00C853;"><span class="legend-label">MA60</span><span class="legend-value">${Math.round(getVal(ma60)).toLocaleString()}</span></div>`;
+
+            container.innerHTML = html;
+        }
+
+        // 검색, 수집, 무한스크롤 등 기존 로직 유지
+        const searchInput = document.getElementById('searchInput');
+        const searchResult = document.getElementById('searchResult');
+        searchInput.addEventListener('keyup', function() {
+            const keyword = this.value.trim();
+            if (keyword.length < 1) { searchResult.style.display = 'none'; return; }
+            fetch(`/api/stock/search?keyword=${keyword}`).then(res => res.json()).then(list => {
+                searchResult.innerHTML = '';
+                if (list.length > 0) {
+                    searchResult.style.display = 'block';
+                    list.forEach(stock => {
+                        const li = document.createElement('li');
+                        li.textContent = `${stock.name} (${stock.code})`;
+                        li.onclick = () => selectStock(stock.code, stock.name);
+                        searchResult.appendChild(li);
+                    });
+                } else { searchResult.style.display = 'none'; }
+            });
+        });
+
+        function selectStock(code, name) {
+            currentCode = code; currentName = name;
+            searchInput.value = ''; searchResult.style.display = 'none';
+            updateLegend({ time: null, point: { x: -1, y: -1 } });
+            loadDataAndAnalysis();
+        }
+
+        function collectData(code) {
+            alert("수집 시작...");
+            fetch(`/api/collect/${code}`).then(() => {
+                let checkInterval = setInterval(() => {
+                    fetch(`/api/stock/${code}/candle-data?type=D`).then(res => res.json()).then(data => {
+                        if(data.length > 100) { clearInterval(checkInterval); loadDataAndAnalysis(); }
+                    });
+                }, 3000);
+            });
+        }
+    </script>
+</body>
+</html>
