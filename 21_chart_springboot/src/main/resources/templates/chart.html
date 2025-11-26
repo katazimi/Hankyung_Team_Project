@@ -59,6 +59,25 @@
             color: white;
             border-color: #2962FF;
         }
+        
+        .favorite-btn {
+            padding: 10px 20px;
+            border: 1px solid #ddd;
+            background-color: white;
+            color: #555;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .favorite-btn.active {
+    		background-color: #ffc107;
+    		color: #ffffff;
+		}
+		.favorite-btn:hover {
+    		filter: brightness(0.97);
+		}
 
         /* 정보 표시줄 */
         #chartLegend {
@@ -96,6 +115,7 @@
     </style>
 </head>
 <body>
+	<input type="hidden" id="currentUserId" th:value="${userId}">
 
     <div class="container">
         <!-- 컨트롤 바 -->
@@ -110,6 +130,7 @@
                 <button class="period-btn active" onclick="changePeriod('D')">일봉</button>
                 <button class="period-btn" onclick="changePeriod('W')">주봉</button>
                 <button class="period-btn" onclick="changePeriod('M')">월봉</button>
+                <button class="favorite-btn" onclick="toggleFavorite()">☆ 즐겨찾기</button>
             </div>
         </div>
 
@@ -154,6 +175,9 @@
         
         // 차트 객체
         let chart, candleSeries, ma5Series, ma20Series, ma60Series, volumeSeries;
+        
+        //현재 종목 즐겨찾기 여부
+        let isFavorite = false;
 
         document.addEventListener('DOMContentLoaded', function () {
             initChart();
@@ -347,6 +371,54 @@
                 }, 3000);
             });
         }
+        
+        
+        //초기 데이터 로딩 종료 후, 현재 종목이 즐겨찾기 되어있는지 확인
+        function checkFavorite() {
+    		const userId = document.getElementById('currentUserId')?.value;
+    		if (!userId) return;
+
+    		fetch(`/api/favorite/${userId}/${currentCode}`)
+        		.then(res => res.json())
+        		.then(flag => {
+            		isFavorite = !!flag;
+            		updateFavoriteButton();
+        		});
+		}
+
+		function updateFavoriteButton() {
+    		const btn = document.getElementById('favoriteBtn');
+    		if (!btn) return;
+    		if (isFavorite) {
+        		btn.classList.add('active');
+        		btn.textContent = '★ 즐겨찾기';
+    		} else {
+        		btn.classList.remove('active');
+        		btn.textContent = '☆ 즐겨찾기';
+    		}
+		}
+		
+		function toggleFavorite() {
+		    const userId = document.getElementById('currentUserId')?.value;
+		    if (!userId) {
+		        alert('로그인 후 즐겨찾기를 사용할 수 있습니다.');
+		        return;
+		    }
+
+		    const method = isFavorite ? 'DELETE' : 'POST';
+		    fetch('/api/favorite', {
+		        method,
+		        headers: { 'Content-Type': 'application/json' },
+		        body: JSON.stringify({ userId, stockCode: currentCode })
+		    })
+		    .then(res => {
+		        if (!res.ok) throw new Error('favorite fail');
+		        isFavorite = !isFavorite;
+		        updateFavoriteButton();
+		    })
+		    .catch(() => alert('즐겨찾기 처리 중 오류가 발생했습니다.'));
+		}
+        
     </script>
 </body>
 </html>
