@@ -82,13 +82,13 @@ button:hover {
     <div th:if="${error}" class="error-msg" th:text="${error}"></div>
 
     <form th:action="@{/user/loginProc}" method="post">
-        <input type="text" name="id" placeholder="아이디" required>
+        <input type="text" name="username" placeholder="아이디" required>
         <input type="password" name="password" placeholder="비밀번호" required>
         <button type="submit">로그인</button>
     </form>
 
     <div class="link-box">
-        <p>계정이 없으신가요? <a th:href="@{/user/join}">회원가입</a></p>
+        <p>계정이 없으신가요? <a th:href="@{/user/signUp}">회원가입</a></p>
     </div>
 </div>
 </body>

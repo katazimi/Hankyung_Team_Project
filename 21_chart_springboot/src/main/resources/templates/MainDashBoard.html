@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security"> <!-- ⭐️ 네임스페이스 추가 -->
 <head>
     <meta charset="UTF-8">
     <title>StockSight - 대시보드</title>
@@ -56,6 +57,7 @@
         }
         .nav-menu { display: flex; gap: 20px; font-size: 15px; font-weight: 600; color: var(--text-sub); }
         .nav-menu a:hover { color: var(--primary-color); }
+        .user-actions { display: flex; align-items: center; gap: 10px; }
         .user-actions button {
             padding: 8px 16px;
             border-radius: 6px;
@@ -64,6 +66,8 @@
             border: none;
         }
         .btn-login { background: var(--primary-color); color: white; }
+        .btn-logout { background: #e0e0e0; color: #333; }
+        .user-info { font-size: 14px; font-weight: 600; color: var(--text-main); margin-right: 5px; }
 
         /* --- 검색 히어로 섹션 --- */
         .hero-section {
@@ -187,7 +191,17 @@
                 <a href="#">포트폴리오</a>
             </nav>
             <div class="user-actions">
-                <button class="btn-login">로그인</button>
+                <!-- ⭐️ 라이브러리 활용: sec:authorize 사용 -->
+                
+                <!-- 로그인 안 된 경우 -->
+                <button sec:authorize="isAnonymous()" class="btn-login" onclick="location.href='/user/login'">로그인</button>
+                
+                <!-- 로그인 된 경우 -->
+                <th:block sec:authorize="isAuthenticated()">
+                    <!-- 인증 객체에서 이름 가져오기 -->
+                    <span class="user-info"><span sec:authentication="name">User</span>님</span>
+                    <button class="btn-logout" onclick="location.href='/user/logout'">로그아웃</button>
+                </th:block>
             </div>
         </div>
     </header>
@@ -222,7 +236,7 @@
             </div>
         </section>
 
-        <!-- 메인 그리드 -->
+        <!-- 메인 콘텐츠 그리드 (순위 & 관심종목) -->
         <div class="dashboard-grid">
             <!-- 왼쪽: 실시간 급상승 -->
             <div class="content-card">

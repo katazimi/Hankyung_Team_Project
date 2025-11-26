@@ -28,6 +28,11 @@ public class StockChartController {
     private final StockCandleRepository candleRepository;
     private final StockInfoRepository stockInfoRepository;
     private final PatternAnalysisService patternService;
+    
+    @GetMapping("/")
+    public String main() {
+    	return "MainDashBoard";
+    }
 
     // 1. [관리자용] 데이터 수집 트리거
     @GetMapping("/api/collect/{code}")
