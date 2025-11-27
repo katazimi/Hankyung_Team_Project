@@ -5,16 +5,19 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 
+import com.hk.chart.config.KisApiConfig;
 import com.hk.chart.dto.CandleDataDto;
 import com.hk.chart.entity.StockCandle;
 import com.hk.chart.entity.StockInfo;
 import com.hk.chart.repository.StockCandleRepository;
 import com.hk.chart.repository.StockInfoRepository;
+import com.hk.chart.service.KisAuthService;
 import com.hk.chart.service.KisMarketService;
 import com.hk.chart.service.PatternAnalysisService;
 
@@ -28,9 +31,18 @@ public class StockChartController {
     private final StockCandleRepository candleRepository;
     private final StockInfoRepository stockInfoRepository;
     private final PatternAnalysisService patternService;
+    private final KisAuthService kisAuthService;
+    private final KisApiConfig kisApiConfig;
     
     @GetMapping("/")
-    public String main() {
+    public String main(Model model) {
+    	// 1. 웹소켓 접속키 발급
+        String approvalKey = kisAuthService.getWebsocketApprovalKey();
+        
+        // 2. 뷰(HTML)로 전달
+        model.addAttribute("approvalKey", approvalKey);
+        model.addAttribute("wsUrl", kisApiConfig.getWebsocketUrl());
+        
     	return "MainDashBoard";
     }
 
@@ -125,5 +137,12 @@ public class StockChartController {
         
         // Service가 이미 날짜 오름차순(ASC)으로 주므로 바로 분석
         return patternService.analyzeAll(candles);
+    }
+    
+    //4. [API] 실시간 환율 정보 (대시보드용)
+    @GetMapping("/api/market/exchange-rate")
+    @ResponseBody
+    public Double getExchangeRate() {
+        return marketService.getExchangeRate();
     }
 }

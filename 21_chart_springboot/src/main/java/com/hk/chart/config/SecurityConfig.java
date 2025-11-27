@@ -29,7 +29,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 // 정적 리소스 및 누구나 접근 가능한 페이지 설정
                 // /api/** 경로도 테스트를 위해 열어두거나 필요에 따라 조정하세요.
-                .requestMatchers("/css/**", "/js/**", "/images/**", "/", "/user/login", "/user/signUp", "/user/joinProc", "/api/stock/search", "/chart").permitAll()
+                .requestMatchers("/css/**", "/js/**", "/favicon.ico","/images/**", "/", "/user/login", "/user/signUp", "/user/joinProc", "/api/stock/search", "/chart", "/api/**").permitAll()
                 // 그 외 모든 요청은 인증된 사용자만 접근 가능
                 .anyRequest().authenticated()
             )

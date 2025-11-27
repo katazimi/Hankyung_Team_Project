@@ -1,5 +1,10 @@
 package com.hk.chart.service;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.WeekFields;
@@ -7,12 +12,14 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hk.chart.config.KisApiConfig;
 import com.hk.chart.dto.response.DailyPriceDataDto;
 import com.hk.chart.dto.response.KisDailyPriceResponse;
@@ -383,6 +390,80 @@ public class KisMarketService {
         }
         
         System.out.println(">>> [" + stockCode + "] 이동평균선 계산 완료.");
+    }
+    
+    // 네이버환율 API
+    public Double getExchangeRate() {
+        // 1. 네이버 API 시도
+        try {
+            System.out.println(">>> [환율] Naver API 요청 시작...");
+            String url = "https://m.search.naver.com/p/csearch/content/qapirender.nhn?key=calculator&pkid=141&q=%ED%99%98%EC%9C%A8&where=m&u1=keb&u6=standardUnit&u7=0&u3=USD&u4=KRW&u8=down&u2=1";
+            
+            HttpClient client = HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(3))
+                    .build();
+            
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    // ⭐️ 네이버는 브라우저 정보(User-Agent)가 없으면 차단할 수 있음
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                    .GET()
+                    .build();
+
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            
+            if (response.statusCode() == 200) {
+                ObjectMapper mapper = new ObjectMapper();
+                Map<String, Object> map = mapper.readValue(response.body(), Map.class);
+                
+                // 네이버 응답 구조: { "country": [ { "value": "1,395.50", ... }, { ... } ] }
+                if (map.containsKey("country")) {
+                    List<Map<String, Object>> countryList = (List<Map<String, Object>>) map.get("country");
+                    
+                    // 리스트의 두 번째 요소(index 1)가 보통 KRW 정보임
+                    if (countryList.size() >= 2) {
+                        Object valueObj = countryList.get(1).get("value");
+                        if (valueObj != null) {
+                            // "1,395.50" 처럼 콤마가 포함된 문자열을 숫자로 변환
+                            String valueStr = valueObj.toString().replace(",", "");
+                            Double rate = Double.parseDouble(valueStr);
+                            System.out.println(">>> [환율] Naver 파싱 성공: " + rate);
+                            return rate;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println(">>> [환율] Naver API 실패: " + e.getMessage());
+        }
+
+        // 2. 실패 시 백업 (ExchangeRate-API) 시도
+        System.out.println(">>> [환율] 백업 API 시도...");
+        return fetchExchangeRate("https://open.er-api.com/v6/latest/USD", "rates", "KRW");
+    }
+
+    // 백업용 API 호출 헬퍼 메서드
+    private Double fetchExchangeRate(String url, String outerKey, String innerKey) {
+        try {
+            HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
+            HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url)).GET().build();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            
+            if (response.statusCode() == 200) {
+                ObjectMapper mapper = new ObjectMapper();
+                Map<String, Object> map = mapper.readValue(response.body(), Map.class);
+                
+                if (map.containsKey(outerKey)) {
+                    Map<String, Object> rates = (Map<String, Object>) map.get(outerKey);
+                    if (rates.containsKey(innerKey)) {
+                        return ((Number) rates.get(innerKey)).doubleValue();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println(">>> [환율] 백업 API 에러: " + e.getMessage());
+        }
+        return null;
     }
 
     // 평균 계산 헬퍼 메서드

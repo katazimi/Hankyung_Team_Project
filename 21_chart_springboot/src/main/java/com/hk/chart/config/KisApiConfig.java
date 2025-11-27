@@ -15,6 +15,7 @@ public class KisApiConfig {
 	private String appKey;
     private String appSecret;
     private String baseUrl;
+    private String websocketUrl = "ws://ops.koreainvestment.com:21000"; 
 
     // 설정이 정상적으로 로드되었는지 확인하는 메서드 (테스트용)
     public void printConfig() {

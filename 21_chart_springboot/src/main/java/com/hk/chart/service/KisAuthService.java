@@ -1,16 +1,19 @@
 package com.hk.chart.service;
 
+import java.util.Map;
+import java.util.Optional;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional; // DB 쓰기 작업을 위한 트랜잭션
+import org.springframework.web.reactive.function.client.WebClient;
+
 import com.hk.chart.config.KisApiConfig;
 import com.hk.chart.dto.request.TokenRequestDto;
 import com.hk.chart.dto.response.TokenResponseDto;
 import com.hk.chart.entity.KisToken; // Entity import
 import com.hk.chart.repository.KisTokenRepository; // Repository import
+
 import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.transaction.annotation.Transactional; // DB 쓰기 작업을 위한 트랜잭션
-import java.time.LocalDateTime;
-import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -48,6 +51,53 @@ public class KisAuthService {
         }
     }
     
+    // ⭐️ [신규] 웹소켓 접속키 발급 메서드
+    // (접속키는 DB 저장보다는 호출 시 메모리에 캐싱하거나 매번 받아도 무방하지만, 여기선 간단히 호출)
+    public String getWebsocketApprovalKey() {
+        try {
+            // 요청 Body
+            Map<String, String> body = Map.of(
+                "grant_type", "client_credentials",
+                "appkey", kisApiConfig.getAppKey(),
+                "secretkey", kisApiConfig.getAppSecret()
+            );
+
+            // POST /oauth2/Approval
+            Map response = kisWebClient.post()
+                    .uri("/oauth2/Approval")
+                    .bodyValue(body)
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .block();
+
+            if (response != null && response.containsKey("approval_key")) {
+                return (String) response.get("approval_key");
+            }
+        } catch (Exception e) {
+            System.err.println("웹소켓 키 발급 실패: " + e.getMessage());
+        }
+        return null;
+    }
+    
+    /**
+     * KIS API 서버에 토큰 발급을 요청하는 실제 통신 메서드
+     */
+    private TokenResponseDto issueToken() {
+        // 1. 요청 본문(Body) 생성
+        TokenRequestDto requestBody = TokenRequestDto.builder()
+                .appkey(kisApiConfig.getAppKey())
+                .appsecret(kisApiConfig.getAppSecret())
+                .build();
+
+        // 2. WebClient를 사용하여 POST 요청 실행
+        return kisWebClient.post()
+                .uri("/oauth2/tokenP") // 토큰 발급 경로
+                .bodyValue(requestBody) // 요청 본문 (JSON 자동 변환)
+                .retrieve()
+                .bodyToMono(TokenResponseDto.class) // 응답 DTO로 매핑
+                .block(); // 동기식으로 처리 (테스트용)
+    }
+    
     /**
      * KIS API에 토큰 발급을 요청하고 DB에 저장/업데이트합니다.
      */
@@ -69,23 +119,5 @@ public class KisAuthService {
         
         System.out.println(">>> [Token] 토큰 발급 및 DB 갱신 완료.");
         return newAccessToken;
-    }
-    /**
-     * KIS API 서버에 토큰 발급을 요청하는 실제 통신 메서드
-     */
-    private TokenResponseDto issueToken() {
-        // 1. 요청 본문(Body) 생성
-        TokenRequestDto requestBody = TokenRequestDto.builder()
-                .appkey(kisApiConfig.getAppKey())
-                .appsecret(kisApiConfig.getAppSecret())
-                .build();
-
-        // 2. WebClient를 사용하여 POST 요청 실행
-        return kisWebClient.post()
-                .uri("/oauth2/tokenP") // 토큰 발급 경로
-                .bodyValue(requestBody) // 요청 본문 (JSON 자동 변환)
-                .retrieve()
-                .bodyToMono(TokenResponseDto.class) // 응답 DTO로 매핑
-                .block(); // 동기식으로 처리 (테스트용)
     }
 }
