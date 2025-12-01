@@ -720,7 +720,7 @@ public class KisMarketService {
                     .queryParam("FID_INPUT_ISCD", "0000")
                     .queryParam("FID_RANK_SORT_CLS_CODE", "1")   // ⭐️ 0:상승순 → 1:하락순
                     .queryParam("FID_INPUT_CNT_1", "0")
-                    .queryParam("FID_PRC_CLS_CODE", "0")
+                    .queryParam("FID_PRC_CLS_CODE", "1")
                     .queryParam("FID_INPUT_PRICE_1", "0")
                     .queryParam("FID_INPUT_PRICE_2", "0")
                     .queryParam("FID_VOL_CNT", "0")
