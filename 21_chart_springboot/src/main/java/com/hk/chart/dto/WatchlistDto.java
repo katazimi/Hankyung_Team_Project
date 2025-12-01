@@ -12,6 +12,7 @@ import lombok.NoArgsConstructor;
 public class WatchlistDto {
     private String code;
     private String name;
-    private Integer price;    // 현재가 (DB 최근 종가)
-    private Double change;    // 등락률 (전일 대비)
+    private String price;  // 현재가 (예: "78,000")
+    private String change; // 전일대비 (예: "-500")
+    private String rate;   // 등락률 (예: "-0.64")
 }

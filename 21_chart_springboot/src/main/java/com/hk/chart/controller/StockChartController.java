@@ -1,7 +1,9 @@
 package com.hk.chart.controller;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Controller;
@@ -13,6 +15,8 @@ import org.springframework.web.bind.annotation.ResponseBody;
 
 import com.hk.chart.config.KisApiConfig;
 import com.hk.chart.dto.CandleDataDto;
+import com.hk.chart.dto.IndexInfoDto;
+import com.hk.chart.dto.RankingDto;
 import com.hk.chart.entity.StockCandle;
 import com.hk.chart.entity.StockInfo;
 import com.hk.chart.repository.StockCandleRepository;
@@ -144,5 +148,29 @@ public class StockChartController {
     @ResponseBody
     public Double getExchangeRate() {
         return marketService.getExchangeRate();
+    }
+    
+    // 6. 실시간 코스피/코스닥 지수 조회 API (웹소켓)
+    @GetMapping("/api/market/indices")
+    @ResponseBody
+    public Map<String, IndexInfoDto> getMarketIndices() {
+        Map<String, IndexInfoDto> result = new HashMap<>();
+        
+        // KisMarketService에 getIndexInfo 메서드가 필요합니다.
+        // 0001: 코스피, 1001: 코스닥
+        IndexInfoDto kospi = marketService.getIndexInfo("0001");
+        IndexInfoDto kosdaq = marketService.getIndexInfo("1001");
+        
+        result.put("kospi", kospi);
+        result.put("kosdaq", kosdaq);
+        
+        return result;
+    }
+    
+    // 6. 실시간 급상승 랭킹 조회 API (DB 조회)
+    @GetMapping("/api/rank/rising")
+    @ResponseBody
+    public List<RankingDto> getRisingRank() {
+        return marketService.getCachedRankingFromDB();
     }
 }

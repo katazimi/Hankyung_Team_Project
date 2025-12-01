@@ -6,6 +6,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.WeekFields;
 import java.util.ArrayList;
@@ -13,34 +14,44 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.http.HttpHeaders;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hk.chart.config.KisApiConfig;
+import com.hk.chart.dto.IndexInfoDto;
+import com.hk.chart.dto.RankingDto;
 import com.hk.chart.dto.response.DailyPriceDataDto;
 import com.hk.chart.dto.response.KisDailyPriceResponse;
 import com.hk.chart.entity.StockCandle;
+import com.hk.chart.entity.StockRanking;
 import com.hk.chart.repository.StockCandleRepository;
+import com.hk.chart.repository.StockRankingRepository;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class KisMarketService {
 
 	private final KisApiConfig kisApiConfig;
     private final WebClient kisWebClient;
     private final KisAuthService authService; // 토큰 관리를 위해 주입
     private final StockCandleRepository candleRepository;
+    private final StockRankingRepository rankingRepository;
     
     private static final String TR_ID_PERIOD_PRICE = "FHKST03010100";
 
     // 거래 ID (Daily Price Inquiry): FHKST01010400
     private static final String TR_ID_DAILY_PRICE = "FHKST01010400";
+    private static final String TR_ID_INDEX_PRICE = "FHKUP03500100";
 
     /**
      * 특정 종목의 과거 일봉 데이터를 조회합니다.
@@ -228,7 +239,7 @@ public class KisMarketService {
     
     @Transactional
     public void collectAllHistory(String stockCode) {
-        // 1. 수집 종료 기준일 (삼성전자 상장일 이전 등 충분히 과거)
+        // 1. 수집 종료 기준일 (상장일 이전 등 충분히 과거)
         String targetStartDate = "19900101"; 
         
         // 2. 수집 시작일 (오늘부터 과거로 감)
@@ -499,5 +510,239 @@ public class KisMarketService {
         } catch (NumberFormatException e) {
             return 0L;
         }
+    }
+
+    public IndexInfoDto getIndexInfo(String indexCode) {
+        String accessToken = authService.getAccessToken();
+
+        try {
+            // [수정 1] 응답을 유연한 Map으로 받아서 통째로 로그 찍기
+            Map<String, Object> responseMap = kisWebClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                        .path("/uapi/domestic-stock/v1/quotations/inquire-price")
+                        .queryParam("FID_COND_MRKT_DIV_CODE", "U") 
+                        .queryParam("FID_INPUT_ISCD", indexCode)
+                        .build())
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                    .header("appkey", kisApiConfig.getAppKey())
+                    .header("appsecret", kisApiConfig.getAppSecret())
+                    .header("tr_id", TR_ID_INDEX_PRICE)
+                    .header("custtype", "P") // [수정 2] 개인(P) 고객 유형 헤더 추가 (필수일 때가 많음)
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .block();
+
+            // [수정 3] 디버깅을 위해 응답 전체 출력 (성공하든 실패하든 확인)
+            // System.out.println(">>> [Index API Full Log] " + responseMap); 
+
+            if (responseMap != null) {
+                String rtCd = (String) responseMap.get("rt_cd");
+                
+                if ("0".equals(rtCd)) {
+                    Map<String, String> output = (Map<String, String>) responseMap.get("output");
+                    if (output != null) {
+                        return IndexInfoDto.builder()
+                                .price(output.get("BSTP_NMIX_PRPR"))
+                                .sign(output.get("BSTP_NMIX_PRDY_VRSS_SIGN"))
+                                .change(output.get("BSTP_NMIX_PRDY_VRSS"))
+                                .rate(output.get("BSTP_NMIX_PRDY_CTRT"))
+                                .build();
+                    }
+                } else {
+                    // [수정 4] 에러 발생 시 msg1 외에 전체 맵을 출력해서 원인 파악
+                    System.err.println(">>> [Index Error] Code: " + rtCd + ", Msg: " + responseMap.get("msg1"));
+                    System.err.println(">>> [Index Error Full Body] " + responseMap);
+                }
+            }
+        } catch (Exception e) {
+            System.err.println(">>> [Index Exception] " + e.getMessage());
+            e.printStackTrace(); // 상세 스택 트레이스 출력
+        }
+
+        return IndexInfoDto.builder()
+                .price("0.00").sign("3").change("0.00").rate("0.00")
+                .build();
+    }
+    
+    /**
+     * ✅ [스케줄러] 매 15분마다 실행 (0분, 15분, 30분, 45분)
+     * Cron 표현식: 초 분 시 일 월 요일
+     */
+    @Scheduled(cron = "0 0/15 * * * *") 
+    @Transactional
+    public void scheduleRankingUpdate() {
+        log.info("⏰ [Scheduler] 실시간 랭킹 업데이트 시작...");
+        
+        // 1. API 호출 (기존 로직 활용하거나 내부 로직 복사)
+        List<RankingDto> apiResult = fetchRisingRankingFromApi();
+
+        if (apiResult == null || apiResult.isEmpty()) {
+            log.warn("⚠️ [Scheduler] API 데이터가 비어있어 DB를 갱신하지 않습니다.");
+            return;
+        }
+
+        // 2. 기존 DB 데이터 싹 비우기 (최신 30개만 유지하기 위해)
+        rankingRepository.deleteAll();
+
+        // 3. Entity로 변환하여 저장
+        List<StockRanking> entities = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+
+        for (RankingDto dto : apiResult) {
+            entities.add(StockRanking.builder()
+                    .ranking(Integer.parseInt(dto.getRank()))
+                    .stockCode(dto.getCode())
+                    .stockName(dto.getName())
+                    .price(dto.getPrice())
+                    .changePrice(dto.getChange())
+                    .changeRate(dto.getRate())
+                    .updatedAt(now)
+                    .build());
+        }
+
+        rankingRepository.saveAll(entities);
+        log.info("✅ [Scheduler] DB 랭킹 업데이트 완료 ({}건)", entities.size());
+    }
+
+    /**
+     * ✅ [Front용] DB에 저장된 랭킹 데이터 조회
+     */
+    public List<RankingDto> getCachedRankingFromDB() {
+        // DB에서 가져오기
+        List<StockRanking> entities = rankingRepository.findAllByOrderByRankingAsc();
+        
+        // 데이터가 없으면(최초 실행 전 등) 즉시 한번 수동 업데이트
+        if (entities.isEmpty()) {
+            log.info("DB가 비어있어 즉시 업데이트를 수행합니다.");
+            scheduleRankingUpdate();
+            entities = rankingRepository.findAllByOrderByRankingAsc();
+        }
+
+        // Entity -> DTO 변환해서 반환
+        return entities.stream()
+                .map(e -> RankingDto.builder()
+                        .rank(String.valueOf(e.getRanking()))
+                        .code(e.getStockCode())
+                        .name(e.getStockName())
+                        .price(e.getPrice())
+                        .change(e.getChangePrice())
+                        .rate(e.getChangeRate())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * (내부용) 실제 API 호출 로직 - 디버깅 강화 버전
+     */
+    private List<RankingDto> fetchRisingRankingFromApi() {
+        String accessToken = authService.getAccessToken();
+        
+        try {
+            // 1. String으로 원본 응답 받기 (에러 내용 확인용)
+            String responseBody = kisWebClient.get()
+                .uri(uriBuilder -> uriBuilder
+                		.path("/uapi/domestic-stock/v1/ranking/fluctuation")
+                		.queryParam("FID_RSFL_RATE2", "0")              // 등락률 범위 끝 (공란: 전체)
+                        .queryParam("FID_COND_MRKT_DIV_CODE", "J")      // 주식
+                        .queryParam("FID_COND_SCR_DIV_CODE", "20170")   // 화면번호
+                        .queryParam("FID_INPUT_ISCD", "0000")           // 전체 종목
+                        .queryParam("FID_RANK_SORT_CLS_CODE", "0")      // 0:상승순, 1:하락순
+                        .queryParam("FID_INPUT_CNT_1", "0")             // 0: 전체(최대)
+                        .queryParam("FID_PRC_CLS_CODE", "0")            // 가격구분
+                        .queryParam("FID_INPUT_PRICE_1", "0")            // 가격범위 시작 (공란 가능)
+                        .queryParam("FID_INPUT_PRICE_2", "0")            // 가격범위 끝 (공란 가능)
+                        .queryParam("FID_VOL_CNT", "0")                  // 거래량 (공란 가능)
+                        .queryParam("FID_TRGT_CLS_CODE", "0")           // 대상구분 (0:전체)
+                        .queryParam("FID_TRGT_EXLS_CLS_CODE", "0")      // 제외구분 (0:전체)️
+                        .queryParam("FID_DIV_CLS_CODE","0")
+                        .queryParam("FID_RSFL_RATE1", "0")               // 등락률 범위 시작 (공란: 전체)
+                        .build())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .header("appkey", kisApiConfig.getAppKey())
+                .header("appsecret", kisApiConfig.getAppSecret())
+                .header("tr_id", "FHPST01700000") // 실전투자용 TR ID
+                .header("custtype", "P")
+                .header("content-type", "application/json")
+                .retrieve()
+                .bodyToMono(String.class) // ⭐️ Map 대신 String으로 수신
+                .block();
+
+            // 2. 로그에 원본 출력
+            System.out.println(">>> [Ranking API Raw Body] " + responseBody);
+
+            // 3. 파싱 (ObjectMapper 사용)
+            ObjectMapper mapper = new ObjectMapper();
+            Map<String, Object> responseMap = mapper.readValue(responseBody, Map.class);
+
+            if (responseMap != null && "0".equals(responseMap.get("rt_cd"))) {
+                List<Map<String, String>> output = (List<Map<String, String>>) responseMap.get("output");
+                if (output != null) {
+                    List<RankingDto> list = new ArrayList<>();
+                    for (Map<String, String> item : output) {
+                        list.add(RankingDto.builder()
+                            .rank(item.get("data_rank"))
+                            .code(item.get("stck_shrn_iscd"))
+                            .name(item.get("hts_kor_isnm"))
+                            .price(item.get("stck_prpr"))
+                            .change(item.get("prdy_vrss"))
+                            .rate(item.get("prdy_ctrt"))
+                            .build());
+                    }
+                    return list;
+                }
+            } else {
+                if (responseMap != null) {
+                    System.err.println(">>> [Ranking API Error] Code: " + responseMap.get("rt_cd") + ", Msg: " + responseMap.get("msg1"));
+                }
+            }
+
+        } catch (Exception e) {
+            System.err.println(">>> [Ranking API Exception] " + e.getMessage());
+            e.printStackTrace();
+        }
+        
+        return Collections.emptyList();
+    }
+
+    /**
+     * 단일 종목 현재가 조회 (외부 서비스 호출용)
+     */
+    public RankingDto fetchCurrentPrice(String stockCode) {
+        String accessToken = authService.getAccessToken();
+        try {
+            // WebClient 요청 (예외처리 포함)
+            String responseBody = kisWebClient.get()
+                .uri(uriBuilder -> uriBuilder
+                    .path("/uapi/domestic-stock/v1/quotations/inquire-price")
+                    .queryParam("FID_COND_MRKT_DIV_CODE", "J")
+                    .queryParam("FID_INPUT_ISCD", stockCode)
+                    .build())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .header("appkey", kisApiConfig.getAppKey())
+                .header("appsecret", kisApiConfig.getAppSecret())
+                .header("tr_id", "FHKST01010100") // 현재가 TR
+                .header("custtype", "P")
+                .retrieve()
+                .bodyToMono(String.class)
+                .block();
+
+            ObjectMapper mapper = new ObjectMapper();
+            Map<String, Object> responseMap = mapper.readValue(responseBody, Map.class);
+
+            if (responseMap != null && "0".equals(responseMap.get("rt_cd"))) {
+                Map<String, String> output = (Map<String, String>) responseMap.get("output");
+                if (output != null) {
+                    return RankingDto.builder()
+                            .code(stockCode)
+                            .price(output.get("stck_prpr")) // API는 String 반환
+                            .change(output.get("prdy_vrss"))
+                            .rate(output.get("prdy_ctrt"))
+                            .build();
+                }
+            }
+        } catch (Exception e) {
+            // 로그 생략 또는 간단히
+        }
+        return null; // 실패 시 null
     }
 }

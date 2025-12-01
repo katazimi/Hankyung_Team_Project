@@ -11,12 +11,12 @@
     <!-- 헤더 -->
     <header>
         <div class="header-content">
-            <div class="logo"><a href="/">Chart Pattern Finder</a></div>
+            <div class="logo"><a href="/">Algo-View</a></div>
             <nav class="nav-menu">
                 <a href="/">대시보드</a>
                 <a href="/chart">차트 분석</a>
                 <a href="#">백테스트</a>
-                <a href="#">포트폴리오</a>
+                <a href="/portfolio">포트폴리오</a>
             </nav>
             <div class="user-actions">
                 <button th:if="${#authentication.name == 'anonymousUser'}" class="btn-login" onclick="location.href='/user/login'">로그인</button>

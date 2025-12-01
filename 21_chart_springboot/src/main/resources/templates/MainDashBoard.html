@@ -5,29 +5,22 @@
     <meta charset="UTF-8">
     <title>StockSight - 대시보드</title>
     <link type="text/css" th:href="@{/css/chart.css}" rel="stylesheet">
-     <link type="text/css" th:href="@{/css/main.css}" rel="stylesheet">
+    <link type="text/css" th:href="@{/css/main.css}" rel="stylesheet">
 </head>
 <body>
 
-    <!-- 헤더 -->
     <header>
         <div class="header-content">
-            <div class="logo"><a href="/">Chart Pattern Finder</a></div>
+            <div class="logo"><a href="/">Algo-View</a></div>
             <nav class="nav-menu">
                 <a href="/">대시보드</a>
                 <a href="/chart">차트 분석</a>
-                <a href="#">백테스트</a> <!-- 추후 구현 -->
-                <a href="#">포트폴리오</a>
+                <a href="#">백테스트</a>
+                <a href="/portfolio">포트폴리오</a>
             </nav>
             <div class="user-actions">
-                <!-- ⭐️ 라이브러리 활용: sec:authorize 사용 -->
-                
-                <!-- 로그인 안 된 경우 -->
                 <button sec:authorize="isAnonymous()" class="btn-login" onclick="location.href='/user/login'">로그인</button>
-                
-                <!-- 로그인 된 경우 -->
                 <th:block sec:authorize="isAuthenticated()">
-                    <!-- 인증 객체에서 이름 가져오기 -->
                     <span class="user-info"><span sec:authentication="name">User</span>님</span>
                     <button class="btn-logout" onclick="location.href='/user/logout'">로그아웃</button>
                 </th:block>
@@ -36,7 +29,6 @@
     </header>
 
     <div class="wrapper">
-        <!-- 히어로 (검색) -->
         <section class="hero-section">
             <div class="hero-title">어떤 종목을 분석해 드릴까요?</div>
             <div class="search-box">
@@ -45,17 +37,14 @@
             </div>
         </section>
 
-        <!-- 시장 지수 (Mock Data) -->
         <section class="market-indices">
             <div class="index-card">
                 <div class="index-name">KOSPI</div>
-                <!-- ID: kospi-price, kospi-change -->
                 <div id="kospi-price" class="index-value">-</div>
                 <div id="kospi-change" class="index-change">-</div>
             </div>
             <div class="index-card">
                 <div class="index-name">KOSDAQ</div>
-                <!-- ID: kosdaq-price, kosdaq-change -->
                 <div id="kosdaq-price" class="index-value">-</div>
                 <div id="kosdaq-change" class="index-change">-</div>
             </div>
@@ -68,13 +57,14 @@
             </div>
         </section>
 
-        <!-- 메인 콘텐츠 그리드 (순위 & 관심종목) -->
         <div class="dashboard-grid">
-            <!-- 왼쪽: 실시간 급상승 -->
             <div class="content-card">
                 <div class="card-header">
-                    <div class="card-title">🔥 실시간 급상승 TOP 5</div>
-                    <div class="more-link">더보기 ></div>
+                    <div class="card-title">
+                        🔥 실시간 급상승 TOP 5 
+                        <span id="rankUpdateTime" style="font-size: 12px; color: #888; font-weight: normal; margin-left: 10px;"></span>
+                    </div>
+                    <div class="more-link" onclick="openModal()" style="cursor: pointer;">더보기 ></div>
                 </div>
                 <table class="stock-table">
                     <thead>
@@ -86,16 +76,15 @@
                         </tr>
                     </thead>
                     <tbody id="rankingList">
-                        <!-- JS로 데이터 로딩 -->
-                    </tbody>
+                        </tbody>
                 </table>
             </div>
 
-            <!-- 오른쪽: 내 관심종목 -->
             <div class="content-card">
                 <div class="card-header">
                     <div class="card-title">⭐ 나의 관심 종목</div>
-                    <div class="more-link">관리</div>
+                    <div class="more-link" onclick="openManageModal()" style="cursor: pointer;">관리 ></div>
+                    
                 </div>
                 <table class="stock-table">
                     <thead>
@@ -106,242 +95,161 @@
                         </tr>
                     </thead>
                     <tbody id="watchlist">
-                        <!-- JS로 데이터 로딩 -->
-                    </tbody>
+                        </tbody>
                 </table>
-                <!-- 로그인 안되어 있을 시 -->
-                <!-- <div style="text-align: center; padding: 20px; color: #999;">로그인이 필요한 서비스입니다.</div> -->
+            </div>
+        </div>
+    </div>
+	
+    <div id="rankModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🔥 실시간 급상승 Top 30</h3>
+                <span class="close-btn" onclick="closeModal()">×</span>
+            </div>
+            <div class="modal-body">
+                <table class="stock-table" style="border: none;">
+                    <thead>
+                        <tr>
+                            <th width="60" style="padding-left: 20px;">순위</th>
+                            <th>종목명</th>
+                            <th style="text-align: right;">현재가</th>
+                            <th style="text-align: right; padding-right: 20px;">등락률</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rankingListFull">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <div id="manageModal" class="modal-overlay">
+        <div class="modal-content" style="width: 400px;">
+            <div class="modal-header">
+                <h3>🛠️ 관심종목 관리</h3>
+                <span class="close-btn" onclick="closeManageModal()">×</span>
+            </div>
+            <div class="modal-body">
+                <table class="stock-table">
+                    <thead>
+                        <tr>
+                            <th>종목명</th>
+                            <th width="80" style="text-align: center;">삭제</th>
+                        </tr>
+                    </thead>
+                    <tbody id="manageList">
+                        </tbody>
+                </table>
             </div>
         </div>
     </div>
     
     <script th:inline="javascript">
-        // 1. 서버에서 전달받은 키와 URL (Natural Template Syntax 적용)
-        // 주석 처리된 부분은 Thymeleaf가 처리하고, 'null'이나 '""'는 기본값으로 사용됩니다.
-        // 이렇게 하면 IDE에서 문법 오류가 발생하지 않습니다.
         const APPROVAL_KEY = /*[[${approvalKey}]]*/ null;
         const WS_URL = /*[[${wsUrl}]]*/ ""; 
 
+        // 15분 간격 (ms)
+        const UPDATE_INTERVAL = 15 * 60 * 1000; 
         let ws;
+        let rankInterval;
 
         document.addEventListener('DOMContentLoaded', function() {
-            // 기존 테이블 렌더링 등 ...
-            
-            // ⭐️ 웹소켓 연결 시작 (키가 있을 때만)
-            if (APPROVAL_KEY) {
-                connectWebSocket();
-            } else {
-                console.warn("웹소켓 접속키가 없습니다. 실시간 시세 연동이 비활성화됩니다.");
-            }
-            
-			loadWatchlist();
-            setupSearch();
-            
+            // 1. 초기 데이터 로딩
+            loadInitialIndices(); 
+            loadWatchlist();
             updateExchangeRate();
-            setInterval(updateExchangeRate, 5000); 
+            loadRealRanking();
+
+            // 2. 웹소켓 연결
+            if (APPROVAL_KEY) connectWebSocket();
+            else console.error("⛔ WebSocket 접속키가 없습니다.");
+            
+            // 3. 검색창 초기화
+            setupSearch();
+
+            // 4. 랭킹 자동 업데이트 (15분 주기)
+            rankInterval = setInterval(() => {
+                console.log("⏰ 랭킹 업데이트 주기 도달");
+                loadRealRanking();
+            }, UPDATE_INTERVAL);
         });
+
+        // [핵심] 차트 페이지 이동 공통 함수
+        // 검색, 랭킹, 관심종목 어디서든 이 함수 하나만 쓰면 됩니다.
+        function moveToChart(code, name) {
+            if (!code) return;
+            
+            console.log(`차트 이동: ${name} (${code})`);
+            
+            // 1. 로컬 스토리지에 저장 (차트 페이지에서 꺼내 씀)
+            localStorage.setItem('selectedCode', code);
+            localStorage.setItem('selectedName', name);
+            
+            // 2. 페이지 이동
+            window.location.href = '/chart';
+        }
+
+        // ---------------------------------------------------------
+        // 데이터 로딩 함수들
+        // ---------------------------------------------------------
+
+        function loadRealRanking() {
+            fetch('/api/rank/rising')
+                .then(res => res.json())
+                .then(data => {
+                    if (!data || data.length === 0) return;
+                    renderTable('rankingList', data.slice(0, 5), true); // 대시보드
+                    renderTable('rankingListFull', data, true);         // 모달
+                    
+                    const now = new Date();
+                    const timeStr = now.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+                    const timeEl = document.getElementById('rankUpdateTime');
+                    if(timeEl) timeEl.innerText = `(${timeStr} 기준)`;
+                })
+                .catch(err => console.error("랭킹 로딩 실패:", err));
+        }
         
         function loadWatchlist() {
             fetch('/api/watchlist')
                 .then(res => {
-                    if (res.status === 401) return null; // 비로그인 상태
+                    if (res.status === 401) return null; 
                     return res.json();
                 })
                 .then(data => {
-                    if (data) {
-                        renderTable('watchlist', data, false);
-                    } else {
-                        document.getElementById('watchlist').innerHTML = '<tr><td colspan="3" style="text-align:center; padding:20px; color:#999;">로그인 후 이용해주세요.</td></tr>';
-                    }
+                    if (data) renderTable('watchlist', data, false);
+                    else document.getElementById('watchlist').innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px; color:#999;">로그인 후 이용해주세요.</td></tr>';
                 })
                 .catch(err => console.error("관심종목 로딩 실패:", err));
         }
-        
-        function updateExchangeRate() {
-            fetch('/api/market/exchange-rate')
-                .then(res => {
-                    if (!res.ok) {
-                        throw new Error('Network response was not ok: ' + res.status);
-                    }
-                    return res.text(); // 1. 텍스트로 먼저 받음 (빈 값 확인용)
-                })
-                .then(text => {
-                    if (!text) {
-                        console.warn("환율 데이터가 비어있습니다. (API 호출 실패 가능성)");
-                        return;
-                    }
-                    
-                    const rate = JSON.parse(text); // 2. JSON 파싱
-                    // console.log("환율 데이터 수신:", rate); // 디버깅용
 
-                    if (rate) {
-                        const el = document.getElementById('exchange-price');
-                        if (!el) return;
-
-                        const currentPrice = parseFloat(rate);
-                        
-                        // 이전 값과 비교하여 색상 효과
-                        const prevPrice = parseFloat(el.getAttribute('data-prev') || currentPrice);
-                        let colorClass = "flat";
-                        if (currentPrice > prevPrice) colorClass = "up";
-                        else if (currentPrice < prevPrice) colorClass = "down";
-                        
-                        el.innerText = currentPrice.toLocaleString() + " 원";
-                        el.className = "index-value " + colorClass;
-                        el.setAttribute('data-prev', currentPrice);
-
-                        // 깜빡임 효과
-                        el.style.opacity = 0.5;
-                        setTimeout(() => el.style.opacity = 1, 200);
-                    }
-                })
-                .catch(err => console.error("환율 로딩 실패 (브라우저 콘솔 확인):", err));
-        }
-
-        function connectWebSocket() {
-            if (!APPROVAL_KEY) {
-                console.error("웹소켓 키가 없습니다.");
-                return;
-            }
-
-            console.log("WebSocket 연결 시도: " + WS_URL);
-            ws = new WebSocket(WS_URL);
-
-            ws.onopen = function() {
-                console.log("✅ WebSocket 연결 성공!");
-                
-                // 1. KOSPI 구독 요청 (0001)
-                sendSubscribe("0001"); 
-                // 2. KOSDAQ 구독 요청 (1001)
-                sendSubscribe("1001");
-            };
-
-            ws.onmessage = function(evt) {
-                const rawData = evt.data;
-                // 첫 데이터는 암호화된 키일 수 있으므로 무시하거나, 0이나 1로 시작하는 데이터만 처리
-                if (rawData.startsWith("0") || rawData.startsWith("1")) {
-                    parseAndDisplay(rawData);
-                }
-            };
-
-            ws.onclose = function() {
-                console.log("WebSocket 연결 종료. 3초 후 재연결...");
-                setTimeout(connectWebSocket, 3000);
-            };
-            
-            ws.onerror = function(err) {
-                console.error("WebSocket 에러:", err);
-            };
-        }
-
-        function sendSubscribe(code) {
-            // 한국투자증권 웹소켓 구독 포맷
-            const req = {
-                "header": {
-                    "approval_key": APPROVAL_KEY,
-                    "custtype": "P", // 개인
-                    "tr_type": "1",  // 1: 등록(구독), 2: 해제
-                    "content-type": "utf-8"
-                },
-                "body": {
-                    "input": {
-                        "tr_id": "H0UPCNT0", // 실시간 지수 체결가 TR ID
-                        "tr_key": code       // 0001(코스피), 1001(코스닥)
-                    }
-                }
-            };
-            ws.send(JSON.stringify(req));
-        }
-
-        function parseAndDisplay(data) {
-            // 데이터 포맷: 0|H0UPCNT0|001|0001^1234.56^12.34^1^1.23^...
-            // 구분자 | 로 나눔
-            const parts = data.split('|');
-            if (parts.length < 4) return;
-
-            // parts[3]에 실제 데이터가 들어있음 (구분자 ^)
-            const content = parts[3];
-            const values = content.split('^');
-
-         	// H0UPCNT0 (실시간 지수) 데이터 순서 수정:
-            // [0]: 종목코드 (0001 or 1001)
-            // [1]: 체결시간 (HHMMSS) -> 기존 코드에서 가격으로 오인한 부분
-            // [2]: 현재가 (지수)
-            // [3]: 전일대비 부호 (1:상한, 2:상승, 3:보합, 4:하한, 5:하락)
-            // [4]: 전일대비 (값)
-            // [9]: 등락률 (%)
-            
-            const code = values[0];
-            const price = parseFloat(values[2]).toFixed(2);
-            const sign = values[3]; 
-            const change = parseFloat(values[4]).toFixed(2);
-            const rate = parseFloat(values[9]).toFixed(2);
-
-            // UI 업데이트
-            let targetId = "";
-            if (code === "0001") targetId = "kospi";
-            else if (code === "1001") targetId = "kosdaq";
-            else return;
-
-            const priceEl = document.getElementById(targetId + "-price");
-            const changeEl = document.getElementById(targetId + "-change");
-
-            if (priceEl && changeEl) {
-                // 색상 결정
-                let colorClass = "flat";
-                let signIcon = "";
-                if (sign === "1" || sign === "2") { colorClass = "up"; signIcon = "▲"; }
-                else if (sign === "4" || sign === "5") { colorClass = "down"; signIcon = "▼"; }
-
-                // 값 넣기
-                priceEl.innerText = price;
-                priceEl.className = "index-value " + colorClass;
-                
-                changeEl.innerText = `${signIcon} ${change} (${rate}%)`;
-                changeEl.className = "index-change " + colorClass;
-                
-                // 깜빡임 효과 (업데이트 시각적 피드백)
-                priceEl.style.opacity = 0.5;
-                setTimeout(() => priceEl.style.opacity = 1, 200);
-            }
-        }
-    </script>
-
-    <script>
-        // --- 더미 데이터 (실제로는 백엔드 API에서 가져와야 함) ---
-        const mockRankings = [
-            { code: '005930', name: '삼성전자', price: 78000, change: 1.5 },
-            { code: '000660', name: 'SK하이닉스', price: 142000, change: 3.2 },
-            { code: '035420', name: 'NAVER', price: 205000, change: -0.5 },
-            { code: '035720', name: '카카오', price: 54300, change: -1.2 },
-            { code: '005380', name: '현대차', price: 240500, change: 2.8 }
-        ];
-
-        const mockWatchlist = [
-            { code: '005930', name: '삼성전자', price: 78000, change: 1.5 },
-            { code: '035720', name: '카카오', price: 54300, change: -1.2 },
-            { code: '000270', name: '기아', price: 110000, change: 0.8 }
-        ];
-
-        document.addEventListener('DOMContentLoaded', function() {
-            renderTable('rankingList', mockRankings, true);
-            renderTable('watchlist', mockWatchlist, false);
-            
-            // 검색창 이벤트 연결 (기존 차트 페이지 API 활용)
-            setupSearch();
-        });
-
+        // ✅ [수정] 테이블 렌더링 함수 (클릭 이벤트 적용)
         function renderTable(elementId, data, showRank) {
             const tbody = document.getElementById(elementId);
             tbody.innerHTML = '';
 
             data.forEach((item, index) => {
                 const row = document.createElement('tr');
+                
+                // 마우스 올렸을 때 클릭 가능하다는 표시
+                row.style.cursor = "pointer"; 
+                
+                // 클릭 시 공통 함수 호출
+                row.onclick = () => moveToChart(item.code, item.name);
+
+                // 데이터 안전 처리
+                let rawPrice = String(item.price || "0").replace(/,/g, ''); 
+                let priceVal = parseFloat(rawPrice);
+                
+                let rawRate = String(item.rate || item.changeRate || "0");
+                let rateVal = parseFloat(rawRate);
+                
+                const colorClass = rateVal > 0 ? 'up' : (rateVal < 0 ? 'down' : '');
+                const sign = rateVal > 0 ? '+' : '';
+
+                // 순위 표시 여부
                 const rankClass = index < 3 ? `rank-${index+1}` : '';
                 const rankHtml = showRank ? `<td><span class="rank-badge ${rankClass}">${index + 1}</span></td>` : '';
-                
-                const colorClass = item.change > 0 ? 'up' : (item.change < 0 ? 'down' : '');
-                const sign = item.change > 0 ? '+' : '';
 
                 row.innerHTML = `
                     ${rankHtml}
@@ -349,21 +257,11 @@
                         <span class="stock-name">${item.name}</span>
                         <span class="stock-code">${item.code}</span>
                     </td>
-                    <td style="text-align: right; font-weight: 500;">${item.price.toLocaleString()}</td>
+                    <td style="text-align: right; font-weight: 500;">${priceVal.toLocaleString()}</td>
                     <td style="text-align: right;" class="${colorClass}">
-                        ${sign}${item.change}%
+                        ${sign}${rateVal.toFixed(2)}%
                     </td>
                 `;
-                
-                // 클릭 시 차트 페이지로 이동
-                row.onclick = () => {
-                    window.location.href = `/chart?code=${item.code}`; // (현재 차트 페이지가 코드 파라미터를 받도록 수정 필요)
-                    // 혹은 localStorage에 저장하고 이동
-                    localStorage.setItem('selectedCode', item.code);
-                    localStorage.setItem('selectedName', item.name);
-                    window.location.href = '/chart';
-                };
-
                 tbody.appendChild(row);
             });
         }
@@ -376,7 +274,6 @@
                 const keyword = this.value.trim();
                 if (keyword.length < 1) { searchResult.style.display = 'none'; return; }
 
-                // 기존에 만든 검색 API 활용
                 fetch(`/api/stock/search?keyword=${keyword}`)
                     .then(res => res.json())
                     .then(list => {
@@ -386,13 +283,10 @@
                             list.forEach(stock => {
                                 const li = document.createElement('li');
                                 li.textContent = `${stock.name} (${stock.code})`;
-                                li.onclick = () => {
-                                    // 선택 시 차트 페이지로 이동하면서 데이터 전달
-                                    // (간단하게 localStorage 사용, 실제로는 URL Query Parameter 추천)
-                                    localStorage.setItem('selectedCode', stock.code);
-                                    localStorage.setItem('selectedName', stock.name);
-                                    window.location.href = '/chart'; 
-                                };
+                                
+                                // ✅ [수정] 검색 결과 클릭 시에도 공통 함수 사용
+                                li.onclick = () => moveToChart(stock.code, stock.name);
+                                
                                 searchResult.appendChild(li);
                             });
                         } else {
@@ -401,13 +295,196 @@
                     });
             });
             
-            // 외부 클릭 시 검색창 닫기
             document.addEventListener('click', function(e) {
                 if (!searchInput.contains(e.target) && !searchResult.contains(e.target)) {
                     searchResult.style.display = 'none';
                 }
             });
         }
+        
+        function loadInitialIndices() {
+             fetch('/api/market/indices') 
+                .then(res => res.json())
+                .then(data => {
+                    if(data.kospi) updateIndexUI("kospi", data.kospi.price, data.kospi.sign, data.kospi.change, data.kospi.rate);
+                    if(data.kosdaq) updateIndexUI("kosdaq", data.kosdaq.price, data.kosdaq.sign, data.kosdaq.change, data.kosdaq.rate);
+                })
+                .catch(err => console.warn("초기 지수 로딩 실패:", err));
+        }
+
+        function updateExchangeRate() {
+            fetch('/api/market/exchange-rate')
+                .then(res => res.text())
+                .then(text => {
+                    if (!text) return;
+                    const rate = JSON.parse(text);
+                    if (rate) {
+                        const el = document.getElementById('exchange-price');
+                        if (el) {
+                            el.innerText = parseFloat(rate).toLocaleString() + " 원";
+                            el.className = "index-value flat"; 
+                        }
+                    }
+                })
+                .catch(err => console.error("환율 로딩 실패:", err));
+        }
+        
+        // --- WebSocket 관련 ---
+        function connectWebSocket() {
+            if (!WS_URL) return;
+            ws = new WebSocket(WS_URL);
+
+            ws.onopen = function() {
+                console.log("✅ WebSocket 연결됨");
+                sendSubscribe("0001"); 
+                sendSubscribe("1001");
+            };
+            ws.onmessage = function(evt) {
+                const rawData = evt.data;
+                if (rawData.startsWith("0") || rawData.startsWith("1")) parseAndDisplay(rawData);
+            };
+            ws.onclose = function() { setTimeout(connectWebSocket, 3000); };
+        }
+
+        function sendSubscribe(code) {
+            const req = {
+                "header": { "approval_key": APPROVAL_KEY, "custtype": "P", "tr_type": "1", "content-type": "utf-8" },
+                "body": { "input": { "tr_id": "H0UPCNT0", "tr_key": code } }
+            };
+            ws.send(JSON.stringify(req));
+        }
+
+        function parseAndDisplay(data) {
+            const parts = data.split('|');
+            if (parts.length < 4) return;
+            const values = parts[3].split('^');
+            if (values.length < 10) return; 
+
+            const code = values[0];
+            const price = parseFloat(values[2]).toFixed(2);
+            const sign = values[3];
+            const change = parseFloat(values[4]).toFixed(2);
+            const rate = parseFloat(values[9]).toFixed(2);
+
+            let targetId = (code === "0001") ? "kospi" : (code === "1001" ? "kosdaq" : "");
+            if(targetId) updateIndexUI(targetId, price, sign, change, rate);
+        }
+        
+        function updateIndexUI(targetId, price, sign, change, rate) {
+            const priceEl = document.getElementById(targetId + "-price");
+            const changeEl = document.getElementById(targetId + "-change");
+            if (!priceEl || !changeEl) return;
+
+            let colorClass = "flat";
+            let signIcon = "";
+            
+            if (sign === "1" || sign === "2" || parseFloat(change) > 0) { 
+                colorClass = "up"; signIcon = "▲"; 
+            } else if (sign === "4" || sign === "5" || parseFloat(change) < 0) { 
+                colorClass = "down"; signIcon = "▼"; 
+            }
+            
+            // 천 단위 콤마 포맷팅 적용
+            const formattedPrice = parseFloat(price).toLocaleString('ko-KR', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+
+            priceEl.innerText = formattedPrice;
+            priceEl.className = "index-value " + colorClass;
+            changeEl.innerText = `${signIcon} ${change} (${rate}%)`;
+            changeEl.className = "index-change " + colorClass;
+            
+            priceEl.style.opacity = 0.5;
+            setTimeout(() => priceEl.style.opacity = 1, 200);
+        }
+        
+        function openManageModal() {
+            // 모달 표시
+            document.getElementById('manageModal').style.display = 'flex';
+            
+            // 목록 불러오기 (기존 loadWatchlist 로직 활용하되, 관리 전용 렌더링 함수 호출)
+            fetch('/api/watchlist')
+                .then(res => {
+                    if (res.status === 401) {
+                        alert("로그인이 필요한 서비스입니다.");
+                        closeManageModal();
+                        return null;
+                    }
+                    return res.json();
+                })
+                .then(data => {
+                    if (data) renderManageList(data);
+                })
+                .catch(err => console.error("관리 목록 로딩 실패:", err));
+        }
+        
+     	// 2. 관리 모달 닫기
+        function closeManageModal() {
+            document.getElementById('manageModal').style.display = 'none';
+        }
+
+        // 3. 관리용 리스트 렌더링 (삭제 버튼 포함)
+        function renderManageList(data) {
+            const tbody = document.getElementById('manageList');
+            tbody.innerHTML = '';
+
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="2" style="text-align:center; padding:20px; color:#999;">등록된 관심종목이 없습니다.</td></tr>';
+                return;
+            }
+
+            data.forEach(item => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>
+                        <span class="stock-name">${item.name}</span>
+                        <span class="stock-code">${item.code}</span>
+                    </td>
+                    <td style="text-align: center;">
+                        <button class="btn-delete" onclick="deleteItem('${item.code}', '${item.name}')">삭제</button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // 4. 삭제 API 호출
+        function deleteItem(code, name) {
+            if (!confirm(`'${name}' 종목을 삭제하시겠습니까?`)) return;
+
+            fetch(`/api/watchlist/${code}`, {
+                method: 'DELETE'
+            })
+            .then(res => {
+                if (res.ok) {
+                    // 성공 시 UI 갱신
+                    // 1. 모달 내 목록 다시 로딩
+                    openManageModal(); 
+                    // 2. 대시보드 메인 목록도 갱신
+                    loadWatchlist();   
+                } else {
+                    alert("삭제에 실패했습니다.");
+                }
+            })
+            .catch(err => console.error("삭제 오류:", err));
+        }
+
+        // 모달 배경 클릭 시 닫기 (이벤트 리스너 추가)
+        document.getElementById('manageModal').addEventListener('click', function(e) {
+            if (e.target === this) closeManageModal();
+        });
+        
+        function openModal() {
+            document.getElementById('rankModal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('rankModal').style.display = 'none';
+        }
+        
+        // 배경 클릭 시 닫기
+        document.getElementById('rankModal').addEventListener('click', function(e) {
+            if (e.target === this) closeModal();
+        });
     </script>
-</body>
-</html>
