@@ -20,6 +20,7 @@
             </nav>
             <div class="user-actions">
                 <button sec:authorize="isAnonymous()" class="btn-login" onclick="location.href='/user/login'">로그인</button>
+                <button sec:authorize="isAnonymous()" class="btn-signup" onclick="location.href='/user/signUp'">회원가입</button>
                 <th:block sec:authorize="isAuthenticated()">
                     <span class="user-info"><span sec:authentication="name">User</span>님</span>
                     <button class="btn-logout" onclick="location.href='/user/logout'">로그아웃</button>
@@ -56,31 +57,42 @@
                 </div>
             </div>
         </section>
+		
+     	<div class="dashboard-grid">	
+			<!-- 급상승/급하락 -->
+			<div class="content-card">
+			    <div class="card-header">
+			        <div class="card-title">
+			            🔥 실시간 랭킹 
+			            <span id="rankModeLabel" style="font-size:12px; color:#f55; font-weight:bold; margin-left:4px;">
+			                급상승
+			            </span>
+			            <span id="rankUpdateTime"
+			                  style="font-size: 12px; color: #888; font-weight: normal; margin-left: 10px;"></span>
+			        </div>
+			        
+			        <div>
+			            <button id="btnRising" class="more-link2" onclick="setRankMode('rising')">급상승</button>
+			            <button id="btnFalling" class="more-link2" onclick="setRankMode('falling')">급하락</button>
+			            <span class="more-link" onclick="openModal()" style="cursor:pointer; margin-left:12px;">더보기 ></span>
+			        </div>
+			    </div>
+			
+			    <table class="stock-table">
+			        <thead>
+			            <tr>
+			                <th width="50">순위</th>
+			                <th>종목명</th>
+			                <th style="text-align: right;">현재가</th>
+			                <th style="text-align: right;">등락률</th>
+			            </tr>
+			        </thead>
+			        <tbody id="rankingList"></tbody>
+			    </table>
+			</div>
+			
 
-        <div class="dashboard-grid">
-            <div class="content-card">
-                <div class="card-header">
-                    <div class="card-title">
-                        🔥 실시간 급상승 TOP 5 
-                        <span id="rankUpdateTime" style="font-size: 12px; color: #888; font-weight: normal; margin-left: 10px;"></span>
-                    </div>
-                    <div class="more-link" onclick="openModal()" style="cursor: pointer;">더보기 ></div>
-                </div>
-                <table class="stock-table">
-                    <thead>
-                        <tr>
-                            <th width="50">순위</th>
-                            <th>종목명</th>
-                            <th style="text-align: right;">현재가</th>
-                            <th style="text-align: right;">등락률</th>
-                        </tr>
-                    </thead>
-                    <tbody id="rankingList">
-                        </tbody>
-                </table>
-            </div>
-
-            <div class="content-card">
+			<div class="content-card">
                 <div class="card-header">
                     <div class="card-title">⭐ 나의 관심 종목</div>
                     <div class="more-link" onclick="openManageModal()" style="cursor: pointer;">관리 ></div>
@@ -98,7 +110,7 @@
                         </tbody>
                 </table>
             </div>
-        </div>
+		</div>
     </div>
 	
     <div id="rankModal" class="modal-overlay">
@@ -153,14 +165,17 @@
         const UPDATE_INTERVAL = 15 * 60 * 1000; 
         let ws;
         let rankInterval;
+        let currentRankMode = 'rising';
 
         document.addEventListener('DOMContentLoaded', function() {
             // 1. 초기 데이터 로딩
             loadInitialIndices(); 
             loadWatchlist();
             updateExchangeRate();
-            loadRealRanking();
-
+            
+            // 1.5. 처음은 급상승
+            setRankMode('rising');
+            
             // 2. 웹소켓 연결
             if (APPROVAL_KEY) connectWebSocket();
             else console.error("⛔ WebSocket 접속키가 없습니다.");
@@ -171,7 +186,7 @@
             // 4. 랭킹 자동 업데이트 (15분 주기)
             rankInterval = setInterval(() => {
                 console.log("⏰ 랭킹 업데이트 주기 도달");
-                loadRealRanking();
+                loadRankByMode();
             }, UPDATE_INTERVAL);
         });
 
@@ -189,26 +204,48 @@
             // 2. 페이지 이동
             window.location.href = '/chart';
         }
+        
+        //모드에 따라 API를 바꿔서 호출하는 공통 함수
+        function loadRankByMode() {
+		    const url = (currentRankMode === 'rising')
+		        ? '/api/rank/rising'
+		        : '/api/rank/falling';
+		
+		    fetch(url)
+		        .then(res => res.json())
+		        .then(data => {
+		            if (!data || data.length === 0) return;
+		
+		            // 공통 테이블에 TOP5 렌더링
+		            renderTable('rankingList', data.slice(0, 5), true);
+		            
+		            // 더보기용 TOP30
+		            const fullBody = document.getElementById('rankingListFull');
+		            
+		            if(fullBody) {
+		            	renderTable('rankingListFull', data.slice(0, 30), true);
+		            } 
+		
+		            const now = new Date();
+		            const timeStr = now.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+		            const timeEl = document.getElementById('rankUpdateTime');
+		            
+		        	if(timeEl) {
+		        		timeEl.innerText = `(${timeStr} 기준, ${currentRankMode === 'rising' ? '급상승' : '급하락'})`;
+		        	}
+		        })
+		       
+		            /* 기존 코드
+		            if (timeEl) timeEl.innerText = `(${timeStr} 기준, ${currentRankMode === 'rising' ? '급상승' : '급하락'})`;
+		        })
+				*/	        
+		        .catch(err => console.error("랭킹 로딩 실패:", err));
+		}
+
 
         // ---------------------------------------------------------
         // 데이터 로딩 함수들
         // ---------------------------------------------------------
-
-        function loadRealRanking() {
-            fetch('/api/rank/rising')
-                .then(res => res.json())
-                .then(data => {
-                    if (!data || data.length === 0) return;
-                    renderTable('rankingList', data.slice(0, 5), true); // 대시보드
-                    renderTable('rankingListFull', data, true);         // 모달
-                    
-                    const now = new Date();
-                    const timeStr = now.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-                    const timeEl = document.getElementById('rankUpdateTime');
-                    if(timeEl) timeEl.innerText = `(${timeStr} 기준)`;
-                })
-                .catch(err => console.error("랭킹 로딩 실패:", err));
-        }
         
         function loadWatchlist() {
             fetch('/api/watchlist')
@@ -328,6 +365,25 @@
                 })
                 .catch(err => console.error("환율 로딩 실패:", err));
         }
+        
+        //모드 전환 함수
+        function setRankMode(mode) {
+    		currentRankMode = mode;
+
+    	// 라벨 텍스트/색 변경
+   			const label = document.getElementById('rankModeLabel');
+    		if (mode === 'rising') {
+        		label.textContent = '급상승';
+        		label.style.color = '#f55';
+    		} else {
+        		label.textContent = '급하락';
+        		label.style.color = '#007bff';
+    		}
+
+    		// 모드 바꿀 때마다 데이터 다시 로딩
+    		loadRankByMode();
+		}
+
         
         // --- WebSocket 관련 ---
         function connectWebSocket() {
@@ -476,6 +532,20 @@
         });
         
         function openModal() {
+        	const modal = document.getElementById('rankModal');
+            modal.style.display = 'flex';
+        	
+        	 const body = modal.querySelector('.modal-body');
+        	 if (body) {
+        	 	body.scrollTop = 0;
+        	 }
+        	
+            const title = document.querySelector('#rankModal h3');
+            if (title) {
+                title.textContent = currentRankMode === 'rising'
+                    ? '🔥 실시간 급상승 Top 30'
+                    : '📉 실시간 급하락 Top 30';
+            }
             document.getElementById('rankModal').style.display = 'flex';
         }
 
