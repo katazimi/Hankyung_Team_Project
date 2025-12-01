@@ -173,4 +173,12 @@ public class StockChartController {
     public List<RankingDto> getRisingRank() {
         return marketService.getCachedRankingFromDB();
     }
+    
+ // 실시간 급하락 랭킹 조회 API (직접 API 호출 버전)
+    @GetMapping("/api/rank/falling")
+    @ResponseBody
+    public List<RankingDto> getFallingRank() {
+        return marketService.getFallingRankingLive();
+    }
+
 }

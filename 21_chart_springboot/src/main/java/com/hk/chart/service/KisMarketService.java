@@ -713,6 +713,76 @@ public class KisMarketService {
         
         return Collections.emptyList();
     }
+    
+    
+    
+ // 급하락 랭킹 조회 (내부용)
+    private List<RankingDto> fetchFallingRankingFromApi() {
+        String accessToken = authService.getAccessToken();
+
+        try {
+            String responseBody = kisWebClient.get()
+                .uri(uriBuilder -> uriBuilder
+                    .path("/uapi/domestic-stock/v1/ranking/fluctuation")
+                    .queryParam("FID_RSFL_RATE2", "0")
+                    .queryParam("FID_COND_MRKT_DIV_CODE", "J")
+                    .queryParam("FID_COND_SCR_DIV_CODE", "20170")
+                    .queryParam("FID_INPUT_ISCD", "0000")
+                    .queryParam("FID_RANK_SORT_CLS_CODE", "1")   // ⭐️ 0:상승순 → 1:하락순
+                    .queryParam("FID_INPUT_CNT_1", "0")
+                    .queryParam("FID_PRC_CLS_CODE", "0")
+                    .queryParam("FID_INPUT_PRICE_1", "0")
+                    .queryParam("FID_INPUT_PRICE_2", "0")
+                    .queryParam("FID_VOL_CNT", "0")
+                    .queryParam("FID_TRGT_CLS_CODE", "0")
+                    .queryParam("FID_TRGT_EXLS_CLS_CODE", "0")
+                    .queryParam("FID_DIV_CLS_CODE","0")
+                    .queryParam("FID_RSFL_RATE1", "0")
+                    .build())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .header("appkey", kisApiConfig.getAppKey())
+                .header("appsecret", kisApiConfig.getAppSecret())
+                .header("tr_id", "FHPST01700000")
+                .header("custtype", "P")
+                .header("content-type", "application/json")
+                .retrieve()
+                .bodyToMono(String.class)
+                .block();
+
+            ObjectMapper mapper = new ObjectMapper();
+            Map<String, Object> responseMap = mapper.readValue(responseBody, Map.class);
+
+            if (responseMap != null && "0".equals(responseMap.get("rt_cd"))) {
+                List<Map<String, String>> output =
+                        (List<Map<String, String>>) responseMap.get("output");
+                if (output != null) {
+                    List<RankingDto> list = new ArrayList<>();
+                    for (Map<String, String> item : output) {
+                        list.add(RankingDto.builder()
+                            .rank(item.get("data_rank"))
+                            .code(item.get("stck_shrn_iscd"))
+                            .name(item.get("hts_kor_isnm"))
+                            .price(item.get("stck_prpr"))
+                            .change(item.get("prdy_vrss"))
+                            .rate(item.get("prdy_ctrt"))
+                            .build());
+                    }
+                    return list;
+                }
+            }
+        } catch (Exception e) {
+            System.err.println(">>> [Falling Ranking API Exception] " + e.getMessage());
+        }
+
+        return Collections.emptyList();
+    }
+    
+ // 프론트에서 바로 쓰는 급하락 랭킹
+    public List<RankingDto> getFallingRankingLive() {
+        return fetchFallingRankingFromApi();
+    }
+
+
 
     /**
      * 단일 종목 현재가 조회 (외부 서비스 호출용)
