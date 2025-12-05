@@ -310,8 +310,8 @@ header {
         .text-right { text-align: right !important; }
         .text-center { text-align: center !important; }
         
-        .up { color: #e12b2b; font-weight: 500; }
-        .down { color: #2b78e1; font-weight: 500; }
+        .up { color: #e12b2b !important; font-weight: 500; }
+        .down { color: #2b78e1 !important; font-weight: 500; }
 
         /* =========================================
            버튼 스타일 (관리용)
@@ -364,5 +364,3 @@ header {
             transition: all 0.2s;
         }
         .more-link2:hover { background: #f8f9fa; border-color: #ccc; }
-        
-    </style>
