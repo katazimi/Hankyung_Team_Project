@@ -6,7 +6,6 @@ import java.time.LocalDateTime;
 
 @Entity
 @Getter
-@Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
@@ -33,9 +32,4 @@ public class BacktestHistory {
     private double mdd;          // MDD
 
     private LocalDateTime createdAt;
-    
-    @PrePersist
-    public void prePersist() {
-        this.createdAt = LocalDateTime.now();
-    }
 }

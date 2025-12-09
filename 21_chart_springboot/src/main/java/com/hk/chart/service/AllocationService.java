@@ -22,11 +22,9 @@ import com.hk.chart.repository.StockCandleRepository;
 import com.hk.chart.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class AllocationService {
 
     private final StockCandleRepository candleRepository;
@@ -41,19 +39,18 @@ public class AllocationService {
     @Transactional
     public AllocationDto.Response analyze(AllocationDto.Request req, String username) {
         
-        long seedMoneyLong = (long) req.getSeedMoney();
-
-        // 1. 포트폴리오 분석
-        AnalysisResult pfResult = calculatePortfolio(req.getAssets(), seedMoneyLong, req.getPeriodMonths());
+        // 1. 포트폴리오 분석 (기존 로직)
+        AnalysisResult pfResult = calculatePortfolio(req.getAssets(), req.getSeedMoney(), req.getPeriodMonths());
         
-        // 2. 벤치마크 분석
+        // 2. 벤치마크 분석 (신규 로직)
         AnalysisResult bmResult = null;
         if (req.getBenchmarkCode() != null && !req.getBenchmarkCode().isEmpty()) {
+            // 벤치마크는 비중 100%짜리 단일 종목 포트폴리오처럼 취급
             List<AllocationDto.Asset> bmAssets = List.of(createAsset(req.getBenchmarkCode(), 100));
             try {
-                bmResult = calculatePortfolio(bmAssets, seedMoneyLong, req.getPeriodMonths());
+                bmResult = calculatePortfolio(bmAssets, req.getSeedMoney(), req.getPeriodMonths());
             } catch (Exception e) {
-                log.warn("벤치마크 분석 실패: {}", e.getMessage());
+                System.err.println("벤치마크 분석 실패: " + e.getMessage());
             }
         }
 
@@ -91,7 +88,6 @@ public class AllocationService {
     // --- 내부 분석 로직 (재사용 가능하게 분리) ---
     
     private AnalysisResult calculatePortfolio(List<AllocationDto.Asset> assets, long seedMoney, int periodMonths) {
-
         // 1. 데이터 수집
         Map<String, List<StockCandle>> dataMap = new HashMap<>();
         int daysNeeded = periodMonths * 30 + 60;
@@ -105,7 +101,7 @@ public class AllocationService {
 
         // 2. 공통 시작일
         String startDate = findCommonStartDate(dataMap);
-        if (startDate == null) throw new RuntimeException("기간 불일치: 공통 데이터를 찾을 수 없습니다.");
+        if (startDate == null) throw new RuntimeException("기간 불일치");
 
         // 3. 시뮬레이션
         long currentTotal = seedMoney;
@@ -178,7 +174,7 @@ public class AllocationService {
             result.volatility = Math.round(vol * 100) / 100.0;
             
             if (vol > 0) {
-                double sharpe = (cagr - 3.5) / vol; // RiskFree 3.5%
+                double sharpe = (cagr - 3.0) / vol; // RiskFree 3%
                 result.sharpeRatio = Math.round(sharpe * 100) / 100.0;
             }
         }
@@ -201,7 +197,6 @@ public class AllocationService {
     private AllocationDto.Asset createAsset(String code, int weight) {
         AllocationDto.Asset a = new AllocationDto.Asset();
         a.setCode(code); a.setWeight(weight);
-        a.setName("Benchmark");
         return a;
     }
 
@@ -210,15 +205,10 @@ public class AllocationService {
      */
     @Transactional(readOnly = true)
     public List<AllocationDto.HistoryResponse> getHistory(String username) {
-        // 1. 유저 조회 시도
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("User not found"));
-
-        // 2. 기록 조회
-        List<BacktestHistory> list = historyRepository.findByUserOrderByCreatedAtDesc(user);
         
-        // [추가] 리스트가 null일 경우 빈 리스트 반환
-        if (list == null) return new ArrayList<>();
+        List<BacktestHistory> list = historyRepository.findByUserOrderByCreatedAtDesc(user);
 
         return list.stream()
                 .map(this::toHistoryResponse)
@@ -230,68 +220,46 @@ public class AllocationService {
     // 이력 저장 로직 분리
     private void saveHistory(AllocationDto.Request req, AllocationDto.Response res, String username) {
         try {
-            // [수정] findByUsername -> findByUserId
-            User user = userRepository.findByUsername(username)
-                    .orElseThrow(() -> new RuntimeException("User not found"));
-            
+            User user = userRepository.findByUsername(username).orElseThrow();
             String assetsJson = objectMapper.writeValueAsString(req.getAssets());
 
             BacktestHistory history = BacktestHistory.builder()
                     .user(user)
                     .testType("ALLOCATION")
-                    // [수정] Double -> Long 형변환 (Entity 타입 맞춤)
-                    .seedMoney((long) req.getSeedMoney()) 
+                    .seedMoney(req.getSeedMoney())
                     .periodMonths(req.getPeriodMonths())
                     .assetsJson(assetsJson)
                     .finalBalance(res.getFinalBalance())
                     .totalReturn(res.getTotalReturn())
                     .cagr(res.getCagr())
                     .mdd(res.getMdd())
-                    // createdAt은 @PrePersist에서 자동 처리됨
+                    .createdAt(LocalDateTime.now())
                     .build();
 
             historyRepository.save(history);
-            log.info("백테스트 이력 저장 완료: User={}", username);
-
         } catch (Exception e) {
-            log.error("이력 저장 실패: {}", e.getMessage());
+            System.err.println("이력 저장 실패: " + e.getMessage());
         }
     }
 
     // Entity -> Response DTO 변환
     private AllocationDto.HistoryResponse toHistoryResponse(BacktestHistory h) {
-        String summary = "자산 정보 없음";
-        
-        // 1. assetsJson이 null이거나 비어있으면 안전하게 처리
-        if (h.getAssetsJson() != null && !h.getAssetsJson().isEmpty()) {
-            try {
-                // JSON 문자열 파싱 시도
-                AllocationDto.Asset[] assets = objectMapper.readValue(h.getAssetsJson(), AllocationDto.Asset[].class);
-                
-                if (assets != null && assets.length > 0) {
-                    summary = assets[0].getName() + " (" + assets[0].getWeight() + "%)";
-                    if (assets.length > 1) {
-                        summary += " 외 " + (assets.length - 1) + "건";
-                    }
+        String summary = "상세 내용 참조";
+        try {
+            AllocationDto.Asset[] assets = objectMapper.readValue(h.getAssetsJson(), AllocationDto.Asset[].class);
+            if (assets != null && assets.length > 0) {
+                summary = assets[0].getName() + " (" + assets[0].getWeight() + "%)";
+                if (assets.length > 1) {
+                    summary += " 외 " + (assets.length - 1) + "건";
                 }
-            } catch (Exception e) {
-                // 파싱 실패해도 에러를 던지지 않고 로그만 남김 (화면은 띄워야 하니까!)
-                log.warn("기록(ID:{}) JSON 파싱 실패: {}", h.getId(), e.getMessage());
-                summary = "데이터 오류"; 
             }
-        }
-
-        // 날짜 포맷팅 안전 처리
-        String dateStr = "";
-        if (h.getCreatedAt() != null) {
-            dateStr = h.getCreatedAt().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
-        }
+        } catch (Exception e) {}
 
         return AllocationDto.HistoryResponse.builder()
                 .id(h.getId())
-                .date(dateStr)
+                .date(h.getCreatedAt().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")))
                 .assetsSummary(summary)
-                .assetsJson(h.getAssetsJson()) // 원본 JSON
+                .assetsJson(h.getAssetsJson())
                 .seedMoney(h.getSeedMoney())
                 .periodMonths(h.getPeriodMonths())
                 .totalReturn(h.getTotalReturn())
