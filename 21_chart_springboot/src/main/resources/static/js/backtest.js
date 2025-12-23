@@ -5,18 +5,87 @@
 let chartInstance = null; // 수익률 곡선 차트
 let donutChartInstance = null; // 도넛 차트
 
-let lineChart = null; // 수익률 곡선 차트
-let donutChart = null; // 도넛 차트
-
 document.addEventListener('DOMContentLoaded', () => {
-    addAssetToTable('삼성전자', '005930', 50);
-    addAssetToTable('SK하이닉스', '000660', 50);
-    updateTotalWeight();
-    
-    // 초기 도넛 차트 그리기 (기본값)
-    updateDonutChart([{name:'삼성전자', weight:50}, {name:'SK하이닉스', weight:50}]);
+    // [수정] 페이지 로드 시 DB에서 자산 불러오기
+    loadMyAssets();
 });
 
+// [추가] DB에서 내 자산 목록 불러오기 (GET)
+function loadMyAssets() {
+    fetch('/api/my-assets')
+        .then(res => {
+            if (res.status === 401) return []; // 비로그인
+            return res.json();
+        })
+        .then(data => {
+            document.getElementById('assetList').innerHTML = ''; // 리스트 초기화
+            
+            if (data.length > 0) {
+                data.forEach(asset => {
+                    // DB ID를 포함하여 테이블에 추가
+                    addAssetToTable(asset.stockName, asset.stockCode, asset.weight, asset.id);
+                });
+                // 데이터가 있을 때만 차트 업데이트
+                const chartData = data.map(d => ({name: d.stockName, weight: d.weight}));
+                updateDonutChart(chartData);
+            } else {
+                // 데이터가 없으면 빈 차트
+                updateTotalWeight();
+                updateDonutChart([]); 
+            }
+        });
+}
+
+// [추가] 자산 DB 저장 (POST)
+function addAssetToDB(name, code) {
+    fetch('/api/my-assets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stockName: name, stockCode: code })
+    })
+    .then(async res => {
+        if (res.status === 401) { alert("로그인이 필요합니다."); return; }
+        if (res.status === 400) { alert("이미 추가된 종목입니다."); return; }
+        if (!res.ok) throw new Error("추가 실패");
+        return res.json();
+    })
+    .then(savedAsset => {
+        if(savedAsset) {
+            addAssetToTable(savedAsset.stockName, savedAsset.stockCode, 0, savedAsset.id);
+            closeSearchModal();
+            ensureStockDataForBacktest(savedAsset.stockCode, savedAsset.stockName);
+        }
+    })
+    .catch(err => console.error(err));
+}
+
+// [추가] 비중 DB 수정 (PUT)
+function updateWeightDB(id, weight) {
+    if (!id || id === 'null') return;
+    fetch(`/api/my-assets/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: weight
+    });
+}
+
+// [추가] 자산 DB 삭제 (DELETE)
+function deleteAssetDB(rowElement, id) {
+    if(!confirm("삭제하시겠습니까?")) return;
+
+    if (id && id !== 'null') {
+        fetch(`/api/my-assets/${id}`, { method: 'DELETE' })
+            .then(res => {
+                if (res.ok) {
+                    rowElement.remove();
+                    updateTotalWeight();
+                }
+            });
+    } else {
+        rowElement.remove();
+        updateTotalWeight();
+    }
+}
 
 // ------------------------
 // 모달 공통 함수
@@ -35,9 +104,10 @@ function closeAnyModal(modalId) {
 // ------------------------
 // 자산 리스트 관리
 // ------------------------
-function addAssetToTable(name, code, weight = 0) {
+function addAssetToTable(name, code, weight = 0, dbId = null) {
     const div = document.createElement('div');
     div.className = 'asset-row';
+    // [수정] DB 연동을 위한 oninput, onchange, onclick 이벤트 연결
     div.innerHTML = `
         <div class="asset-info">
             ${name}
@@ -45,9 +115,12 @@ function addAssetToTable(name, code, weight = 0) {
             <input type="hidden" class="code-input" value="${code}">
             <input type="hidden" class="name-input" value="${name}">
         </div>
-        <input type="number" class="weight-input" value="${weight}" oninput="updateTotalWeight()" placeholder="%">
+        <input type="number" class="weight-input" value="${weight}" 
+               oninput="updateTotalWeight()" 
+               onchange="updateWeightDB('${dbId}', this.value)" 
+               placeholder="%">
         <span style="font-size:14px; color:#666;">%</span>
-        <button class="btn-remove" onclick="this.parentElement.remove(); updateTotalWeight();">×</button>
+        <button class="btn-remove" onclick="deleteAssetDB(this.parentElement, '${dbId}')">×</button>
     `;
     document.getElementById('assetList').appendChild(div);
     updateTotalWeight();
@@ -68,7 +141,7 @@ function updateTotalWeight() {
     span.style.color = sum === 100 ? '#2563eb' : '#e11d48';
     
     // 비중 변경 시 실시간 도넛 차트 업데이트 (선택 사항)
-    // updateDonutChart(currentAssets); 
+     updateDonutChart(currentAssets); 
 }
 
 // ------------------------
@@ -108,7 +181,7 @@ function runAnalysis() {
     .then(res => res.json())
     .then(data => {
         renderResult(data);
-        updateDonutChart(assets); // 분석 실행 시 도넛 차트 갱신
+        // updateDonutChart(assets); // updateTotalWeight에서 이미 수행함
     })
     .catch(err => alert("분석 실패: " + err))
     .finally(() => { document.querySelector('.btn-submit').innerText = "Analyze Portfolio ▶"; });
@@ -177,6 +250,9 @@ function updateDonutChart(assets) {
     if(donutChartInstance) donutChartInstance.destroy();
 
     const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#6366f1'];
+    
+    // 데이터 없을 때 빈 차트 방지
+    if(!assets || assets.length === 0) return;
 
     donutChartInstance = new Chart(ctx, {
         type: 'doughnut',
@@ -238,9 +314,8 @@ document.getElementById('modalSearchInput').addEventListener('keyup', function()
                     const li = document.createElement('li');
                     li.innerHTML = `${stock.name} <span style="color:#999; font-size:12px;">${stock.code}</span>`;
                     li.onclick = () => {
-                    	ensureStockDataForBacktest(stock.code, stock.name);
-                        addAssetToTable(stock.name, stock.code, 0); 
-                        closeSearchModal();
+                        // [수정] 클릭 시 DB 저장 함수 호출
+                        addAssetToDB(stock.name, stock.code);
                     };
                     list.appendChild(li);
                 });
@@ -258,8 +333,20 @@ function openHistoryModal() {
             if(!list) return;
             const tbody = document.getElementById('historyList');
             tbody.innerHTML = '';
-            openAnyModal('historyModal');
+            //여기부터 수정
+			
+         	// 모달 요소 가져오기
+            const modal = document.getElementById('historyModal');
+            
+            const modalBody = modal.querySelector('.modal-body');
+            if (modalBody) {
+                modalBody.scrollTop = 0;
+            }
 
+            modal.style.display = 'flex';
+            setTimeout(() => { modal.classList.add('show'); }, 10);
+            
+            //여기까지 수정
             if (list.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">기록이 없습니다.</td></tr>';
                 return;
@@ -292,9 +379,12 @@ function restoreSettings(seed, period, assetsJson) {
     document.getElementById('assetList').innerHTML = '';
     
     const assets = JSON.parse(assetsJson.replace(/&quot;/g, '"'));
-    assets.forEach(a => addAssetToTable(a.name, a.code, a.weight));
+    
+    // 불러온 값은 분석용이므로 DB ID 없이 화면에만 추가 (수정 시 저장 안됨)
+    assets.forEach(a => addAssetToTable(a.name, a.code, a.weight, null));
+    
     updateTotalWeight();
-    updateDonutChart(assets); // 도넛 차트도 복원된 값으로 갱신
+    // updateDonutChart(assets); // updateTotalWeight가 호출하므로 중복 제거
     closeHistoryModal();
 }
 
